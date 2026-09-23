@@ -1,4 +1,4 @@
-/* חיבורים — קרן יעל. בלי ספריות, בלי בנייה. */
+/* Connections — Yael Foundation. No libraries, no build step. */
 (() => {
   "use strict";
 
@@ -14,9 +14,9 @@
     return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   }
   function inter(a, b) { return a.filter(x => b.includes(x)); }
-  function joinHe(list) {
+  function joinList(list) {
     if (list.length <= 1) return list.join("");
-    return list.slice(0, -1).join(", ") + " ו" + list[list.length - 1];
+    return list.slice(0, -1).join(", ") + " and " + list[list.length - 1];
   }
   function firstName(n) { return n.split(" ")[0]; }
   function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
@@ -239,7 +239,7 @@
         ctx.beginPath(); ctx.arc(M.x, M.y, 14 + pulse * 8, 0, Math.PI * 2); ctx.stroke();
         star4(ctx, M.x, M.y, 12, "#2F7BF5");
         ctx.fillStyle = "#2F7BF5"; ctx.font = "600 13px Rubik, sans-serif"; ctx.textAlign = "center";
-        ctx.fillText(state.me.name || "את/ה", M.x, M.y + 30);
+        ctx.fillText(state.me.name || "You", M.x, M.y + 30);
       }
     }
 
@@ -254,13 +254,13 @@
     }
 
     function showCard(n) {
-      if (!n) { card.innerHTML = '<p class="map-card-hint">רחפו או הקישו על כוכב כדי להכיר את המנהל או המנהלת</p>'; return; }
+      if (!n) { card.innerHTML = '<p class="map-card-hint">Hover or tap a star to meet the principal</p>'; return; }
       const p = n.p;
       card.innerHTML = `
         <h4>${esc(p.name)}</h4>
         <p class="meta">${esc(p.school)} · ${esc(p.city)} · ${S.levels[p.level]}</p>
         <div class="tags">${p.topics.map(t => `<span class="tag">${label(t)}</span>`).join("")}</div>
-        <p class="meta">חזק/ה ב: ${p.gives.map(label).join(", ")}</p>`;
+        <p class="meta">Strong in: ${p.gives.map(label).join(", ")}</p>`;
     }
 
     function pick(e) {
@@ -287,7 +287,7 @@
       const b = document.createElement("button");
       b.type = "button"; b.className = "chip";
       b.setAttribute("aria-pressed", String(id === null));
-      b.style.setProperty("--c", color || "var(--gold)");
+      b.style.setProperty("--c", color || "var(--blue)");
       b.innerHTML = `<i></i>${text}`;
       b.addEventListener("click", () => {
         state.filter = id;
@@ -296,7 +296,7 @@
       });
       chips.appendChild(b);
     };
-    mk(null, "כל הרשת");
+    mk(null, "Whole network");
     S.topics.forEach(t => mk(t.id, t.label, t.color));
 
     return {
@@ -313,15 +313,15 @@
   // 3. Matching — runs locally, costs no AI credits
   // =========================================================
   const OPENERS = {
-    climate: "מה הדבר האחד ששינה אצלכם את האווירה במסדרונות?",
-    inclusion: "איך בונים תוכנית שילוב שהמורים באמת מאמינים בה?",
-    ai: "איפה AI כבר חוסך לצוות שלכם זמן — ואיפה עוד לא?",
-    staff: "מה שומר אצלכם על מורים טובים שנה אחרי שנה?",
-    parents: "איך אתם מגיעים להורים שלא מגיעים לאסיפות?",
-    wellbeing: "איך נראה אצלכם בוקר של תלמיד שקשה לו?",
-    gaps: "מה עבד אצלכם בצמצום פערים בלי לתייג תלמידים?",
-    innovation: "איזה ניסוי פדגוגי הצליח לכם מעבר למצופה?",
-    leadership: "איך מחלקים אחריות בהנהלה בלי לאבד את התמונה הגדולה?"
+    climate: "What's the one thing that changed the atmosphere in your hallways?",
+    inclusion: "How do you build an inclusion plan your teachers actually believe in?",
+    ai: "Where is AI already saving your staff time — and where not yet?",
+    staff: "What keeps good teachers at your school year after year?",
+    parents: "How do you reach the parents who never come to meetings?",
+    wellbeing: "What does the morning look like for a student who's struggling at your school?",
+    gaps: "What worked for you in closing gaps without labeling students?",
+    innovation: "Which teaching experiment worked better than you expected?",
+    leadership: "How do you share responsibility in your leadership team without losing the big picture?"
   };
 
   function score(me, p) {
@@ -337,10 +337,10 @@
 
   function localText(m) {
     const n = firstName(m.p.name), parts = [];
-    if (m.give.length) parts.push(`ל${n} יש ניסיון ב${joinHe(m.give.map(label))} — בדיוק מה שחיפשת.`);
-    if (m.get.length) parts.push(`ובתמורה, ${n} רוצה ללמוד ${joinHe(m.get.map(label))} — וזה התחום שלך.`);
-    if (m.shared.length) parts.push(`שניכם מתמודדים השנה עם ${joinHe(m.shared.map(label))}.`);
-    if (!parts.length) parts.push(`נקודת מבט רעננה מ${S.regions[m.p.region]}.`);
+    if (m.give.length) parts.push(`${n} has real experience in ${joinList(m.give.map(label).map(x => x.toLowerCase()))} — exactly what you're looking for.`);
+    if (m.get.length) parts.push(`In return, ${n} wants to learn about ${joinList(m.get.map(label).map(x => x.toLowerCase()))}, which is your strength.`);
+    if (m.shared.length) parts.push(`You're both working on ${joinList(m.shared.map(label).map(x => x.toLowerCase()))} this year.`);
+    if (!parts.length) parts.push(`A fresh perspective from the ${S.regions[m.p.region]}.`);
     const t = m.give[0] || m.shared[0] || m.p.topics[0];
     return { why: parts.join(" "), opener: OPENERS[t] };
   }
@@ -375,29 +375,29 @@
 
   function render(ai) {
     if (!current.matches.length) {
-      list.innerHTML = '<li class="empty">סמנו לפחות נושא אחד כדי שנוכל למצוא חיבורים.</li>';
+      list.innerHTML = '<li class="empty">Pick at least one topic so we can find your connections.</li>';
       return;
     }
     list.innerHTML = current.matches.map(m => {
       const txt = (ai && ai[m.p.id]) || localText(m);
       const C = 2 * Math.PI * 28, off = C * (1 - m.pct / 100);
-      const tags = [...m.give.map(t => `<span class="tag">יכול/ה לעזור לך: ${label(t)}</span>`),
+      const tags = [...m.give.map(t => `<span class="tag">Can help you: ${label(t)}</span>`),
                     ...m.shared.map(t => `<span class="tag tag-soft">${label(t)}</span>`)].join("");
       return `
       <li class="match${ai && ai[m.p.id] ? " is-ai" : ""}">
-        <div class="match-score" aria-label="התאמה ${m.pct} אחוז">
+        <div class="match-score" aria-label="${m.pct} percent match">
           <svg viewBox="0 0 64 64" aria-hidden="true">
             <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(47,123,245,.12)" stroke-width="2"/>
             <circle cx="32" cy="32" r="28" fill="none" stroke="#2F7BF5" stroke-width="3" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${off}"/>
           </svg>
-          <span>${m.pct}%<small>התאמה</small></span>
+          <span>${m.pct}%<small>match</small></span>
         </div>
         <h4 class="match-name">${esc(m.p.name)}</h4>
         <p class="match-meta">${esc(m.p.school)} · ${esc(m.p.city)} · ${S.levels[m.p.level]}</p>
         <div class="match-body">
           <p class="match-why">${esc(txt.why)}</p>
           ${tags ? `<div class="tags">${tags}</div>` : ""}
-          <p class="match-open"><b>שאלה לפתיחת שיחה</b>${esc(txt.opener)}</p>
+          <p class="match-open"><b>Conversation starter</b>${esc(txt.opener)}</p>
         </div>
       </li>`;
     }).join("");
@@ -444,7 +444,7 @@
 
     aiBtn.disabled = true;
     aiStatus.hidden = false;
-    aiStatus.textContent = "מנסחים עבורך…";
+    aiStatus.textContent = "Writing for you…";
     try {
       const res = await fetch("/api/connect", { method: "POST", headers: { "content-type": "application/json" }, body: key });
       if (!res.ok) throw new Error(String(res.status));
@@ -456,14 +456,106 @@
       aiStatus.hidden = true;
       render(byId);
     } catch {
-      aiStatus.textContent = "ה-AI עוד לא מחובר לגרסה הזו של האתר. אחרי שמוסיפים את מפתח Gemini ב-Cloudflare, הכפתור יכתוב הסבר ושאלת פתיחה אישיים לכל חיבור. בינתיים מוצג ניסוח אוטומטי.";
+      aiStatus.textContent = "AI isn't connected on this copy of the site yet. Once the Gemini key is added in Cloudflare, this button writes a personal reason and conversation starter for each connection. For now you're seeing the automatic wording.";
     } finally {
       aiBtn.disabled = false;
     }
   });
 
   // =========================================================
-  // 5. "Living wall" preview — lines appear as people meet
+  // 5. The board — posts in any language, shown in English
+  //    Translation happens once on the server when a post is saved.
+  // =========================================================
+  (function board() {
+    const form = $("#boardForm"), list = $("#posts"), status = $("#boardStatus");
+    const btn = $("#boardBtn"), ta = $("#b-text"), count = $("#b-count");
+    const LANG = { he: "Hebrew", ar: "Arabic", ru: "Russian", am: "Amharic", fr: "French", es: "Spanish" };
+    const KIND = { question: "Question", idea: "Idea", offer: "Offer to help" };
+    const samples = S.posts.map(p => ({ ...p, sample: true }));
+    let posts = samples.slice();
+
+    function ago(ts) {
+      if (!ts) return "";
+      const m = Math.round((Date.now() - ts) / 60000);
+      if (m < 1) return "just now";
+      if (m < 60) return `${m} min ago`;
+      const h = Math.round(m / 60);
+      return h < 24 ? `${h}h ago` : `${Math.round(h / 24)}d ago`;
+    }
+
+    function renderPosts() {
+      list.innerHTML = posts.map(p => {
+        const translated = p.original && p.lang && p.lang !== "en";
+        return `
+        <li class="post">
+          <div class="post-top">
+            <span class="post-kind" data-kind="${esc(p.kind)}">${KIND[p.kind] || "Post"}</span>
+            ${p.sample ? '<span class="post-sample">Example</span>' : p.preview ? '<span class="post-sample">Preview — not saved</span>' : `<span class="post-sample">${ago(p.ts)}</span>`}
+          </div>
+          <p class="post-text" dir="auto">${esc(p.text)}</p>
+          ${translated ? `<p class="post-original" dir="auto" lang="${esc(p.lang)}" hidden>${esc(p.original)}</p>` : ""}
+          <div class="post-meta">
+            <span><b>${esc(p.name || "A principal")}</b>${p.school ? " · " + esc(p.school) : ""}</span>
+            ${translated ? `<button type="button" class="post-lang" aria-expanded="false">Translated from ${LANG[p.lang] || "another language"} · Show original</button>` : ""}
+          </div>
+        </li>`;
+      }).join("");
+    }
+
+    list.addEventListener("click", e => {
+      const b = e.target.closest(".post-lang");
+      if (!b) return;
+      const orig = b.closest(".post").querySelector(".post-original");
+      const open = orig.hidden;
+      orig.hidden = !open;
+      b.setAttribute("aria-expanded", String(open));
+      b.textContent = b.textContent.replace(open ? "Show original" : "Hide original", open ? "Hide original" : "Show original");
+    });
+
+    const updateCount = () => { count.textContent = ta.value.length; };
+    ta.addEventListener("input", updateCount);
+    updateCount();
+
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const post = {
+        kind: fd.get("kind"),
+        name: (fd.get("name") || "").toString().trim(),
+        school: (fd.get("school") || "").toString().trim(),
+        text: (fd.get("text") || "").toString().trim()
+      };
+      if (post.text.length < 3) { status.textContent = "Write a few words first."; ta.focus(); return; }
+
+      btn.disabled = true;
+      status.textContent = "Translating and posting…";
+      try {
+        const res = await fetch("/api/board", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(post) });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 429) { status.textContent = "You've posted a few times in a row — try again in a minute."; return; }
+        if (res.status === 422) { status.textContent = "This post couldn't be published. Please rephrase and try again."; return; }
+        if (!res.ok || !data.post) throw new Error(String(res.status));
+        posts = [data.post, ...posts.filter(p => !p.sample || posts.length < 6)];
+        renderPosts();
+        form.reset(); updateCount();
+        status.textContent = data.post.lang && data.post.lang !== "en" ? `Posted — translated from ${LANG[data.post.lang] || "your language"}.` : "Posted.";
+      } catch {
+        posts = [{ ...post, preview: true, lang: "en" }, ...posts];
+        renderPosts();
+        status.textContent = "Preview only: this copy of the site isn't connected yet, so the post wasn't translated or saved. On the live site it's translated to English and shared with everyone.";
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    renderPosts();
+    fetch("/api/board").then(r => (r.ok ? r.json() : null)).then(data => {
+      if (data && Array.isArray(data.posts) && data.posts.length) { posts = data.posts; renderPosts(); }
+    }).catch(() => { /* static preview: keep the examples */ });
+  })();
+
+  // =========================================================
+  // 6. "Living wall" preview — lines appear as people meet
   // =========================================================
   (function wall() {
     const cv = $("#wall");
@@ -494,7 +586,7 @@
       }
       pts.forEach(p => { ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.beginPath(); ctx.arc(p.x * w, p.y * h, 1.8, 0, Math.PI * 2); ctx.fill(); });
       ctx.fillStyle = "rgba(189,235,250,.95)"; ctx.font = "500 12px Rubik, sans-serif"; ctx.textAlign = "right";
-      ctx.fillText(`${shown} חיבורים חדשים היום`, w - 14, h - 14);
+      ctx.fillText(`${shown} new connections today`, w - 14, h - 14);
     }
     build();
     draw(9000); // a resting frame before it scrolls into view
