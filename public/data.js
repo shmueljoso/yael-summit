@@ -1,0 +1,46 @@
+/* נתוני דוגמה — שמות ובתי ספר בדויים. בגרסה האמיתית יגיעו מטופס ההרשמה. */
+window.SUMMIT = {
+  topics: [
+    { id: "climate",    label: "אקלים ומוגנות",      color: "#2F7BF5" },
+    { id: "inclusion",  label: "שילוב והכלה",        color: "#E0678F" },
+    { id: "ai",         label: "AI וטכנולוגיה",      color: "#6A5CF0" },
+    { id: "staff",      label: "צוות וחוסן מורים",   color: "#F2994A" },
+    { id: "parents",    label: "הורים וקהילה",       color: "#14B8A6" },
+    { id: "wellbeing",  label: "רווחה רגשית",        color: "#EC6BB0" },
+    { id: "gaps",       label: "צמצום פערים",        color: "#1FA3F2" },
+    { id: "innovation", label: "פדגוגיה חדשנית",     color: "#8B5CF6" },
+    { id: "leadership", label: "ניהול ומנהיגות",     color: "#0D1B4A" }
+  ],
+  levels: { elem: "יסודי", mid: "חטיבת ביניים", high: "תיכון", six: "שש־שנתי" },
+  regions: { north: "צפון", haifa: "חיפה והקריות", center: "מרכז", jlm: "ירושלים והסביבה", south: "דרום" },
+  people: [
+    { id: 1,  name: "רונית כהן",      school: "יסודי הדקל",          city: "באר שבע",     region: "south",  level: "elem", topics: ["climate","parents","gaps"],        gives: ["parents","climate"],       seeks: ["ai","staff"] },
+    { id: 2,  name: "אבי לוי",         school: "תיכון מדעים ואמנויות", city: "חיפה",        region: "haifa",  level: "high", topics: ["ai","innovation","staff"],        gives: ["ai","innovation"],         seeks: ["wellbeing","parents"] },
+    { id: 3,  name: "סמאח חורי",       school: "חטיבת אל־נור",         city: "נצרת",        region: "north",  level: "mid",  topics: ["gaps","parents","leadership"],    gives: ["parents","gaps"],          seeks: ["innovation","ai"] },
+    { id: 4,  name: "דנה פרידמן",     school: "יסודי שקד",            city: "רעננה",       region: "center", level: "elem", topics: ["inclusion","wellbeing","staff"],   gives: ["inclusion","wellbeing"],   seeks: ["leadership","climate"] },
+    { id: 5,  name: "יוסי מזרחי",     school: "שש־שנתי רמות",         city: "ירושלים",     region: "jlm",    level: "six",  topics: ["leadership","staff","climate"],   gives: ["leadership","staff"],      seeks: ["ai","inclusion"] },
+    { id: 6,  name: "מירב שטרן",      school: "חטיבת הגליל",          city: "כרמיאל",      region: "north",  level: "mid",  topics: ["wellbeing","climate","inclusion"], gives: ["wellbeing","climate"],     seeks: ["gaps","parents"] },
+    { id: 7,  name: "עומר בן דוד",    school: "תיכון אופק",           city: "אשדוד",       region: "south",  level: "high", topics: ["gaps","innovation","ai"],         gives: ["gaps","innovation"],       seeks: ["staff","leadership"] },
+    { id: 8,  name: "ליאת גולן",       school: "יסודי הגפן",           city: "מודיעין",     region: "center", level: "elem", topics: ["innovation","parents","ai"],      gives: ["innovation","ai"],         seeks: ["inclusion","wellbeing"] },
+    { id: 9,  name: "חאלד עבאס",      school: "תיכון אל־פאראבי",      city: "טייבה",       region: "center", level: "high", topics: ["leadership","gaps","staff"],      gives: ["gaps","leadership"],       seeks: ["ai","climate"] },
+    { id: 10, name: "נעמה רוזן",       school: "חטיבת הרימון",         city: "תל אביב",     region: "center", level: "mid",  topics: ["wellbeing","ai","climate"],       gives: ["wellbeing","ai"],          seeks: ["parents","leadership"] },
+    { id: 11, name: "משה אזולאי",     school: "יסודי נווה ים",        city: "קריית ים",    region: "haifa",  level: "elem", topics: ["parents","gaps","climate"],       gives: ["parents","climate"],       seeks: ["innovation","staff"] },
+    { id: 12, name: "שירה בירנבאום",  school: "תיכון הרי יהודה",       city: "בית שמש",     region: "jlm",    level: "high", topics: ["inclusion","wellbeing","leadership"], gives: ["inclusion","leadership"], seeks: ["ai","gaps"] },
+    { id: 13, name: "גלית אוחיון",    school: "יסודי כלנית",          city: "דימונה",      region: "south",  level: "elem", topics: ["gaps","staff","wellbeing"],       gives: ["staff","gaps"],            seeks: ["innovation","parents"] },
+    { id: 14, name: "איתי שפירא",     school: "שש־שנתי הנגב",         city: "ירוחם",       region: "south",  level: "six",  topics: ["innovation","leadership","parents"], gives: ["innovation","parents"],  seeks: ["wellbeing","inclusion"] },
+    { id: 15, name: "רינה טל",         school: "חטיבת הכרמל",          city: "חיפה",        region: "haifa",  level: "mid",  topics: ["staff","climate","inclusion"],    gives: ["staff","inclusion"],       seeks: ["ai","gaps"] },
+    { id: 16, name: "אלכס פוגל",      school: "תיכון טכנולוגי עמל",   city: "חולון",       region: "center", level: "high", topics: ["ai","gaps","innovation"],         gives: ["ai","gaps"],               seeks: ["climate","wellbeing"] },
+    { id: 17, name: "הדס נחום",        school: "יסודי אלון",           city: "עפולה",       region: "north",  level: "elem", topics: ["parents","inclusion","wellbeing"], gives: ["parents","wellbeing"],    seeks: ["leadership","ai"] },
+    { id: 18, name: "יעקב קליין",     school: "חטיבת ירושלים",        city: "ירושלים",     region: "jlm",    level: "mid",  topics: ["climate","leadership","gaps"],    gives: ["climate","leadership"],    seeks: ["innovation","staff"] },
+    { id: 19, name: "ענבל דהן",        school: "שש־שנתי השרון",        city: "נתניה",       region: "center", level: "six",  topics: ["staff","wellbeing","innovation"], gives: ["staff","wellbeing"],       seeks: ["parents","gaps"] },
+    { id: 20, name: "מוחמד סעיד",     school: "יסודי אל־סלאם",        city: "רהט",         region: "south",  level: "elem", topics: ["gaps","parents","ai"],            gives: ["parents","gaps"],          seeks: ["ai","leadership"] },
+    { id: 21, name: "תמר אלמוג",       school: "תיכון העמק",           city: "יקנעם",       region: "north",  level: "high", topics: ["innovation","climate","staff"],   gives: ["innovation","climate"],    seeks: ["inclusion","parents"] },
+    { id: 22, name: "בועז הררי",       school: "חטיבת מבשרת",          city: "מבשרת ציון",  region: "jlm",    level: "mid",  topics: ["ai","staff","leadership"],        gives: ["ai","staff"],              seeks: ["wellbeing","climate"] },
+    { id: 23, name: "אורלי ביטון",    school: "יסודי השחר",           city: "קריית גת",    region: "south",  level: "elem", topics: ["wellbeing","inclusion","gaps"],   gives: ["inclusion","gaps"],        seeks: ["staff","ai"] },
+    { id: 24, name: "רועי ברק",        school: "תיכון הים",            city: "הרצליה",      region: "center", level: "high", topics: ["leadership","innovation","parents"], gives: ["leadership","innovation"], seeks: ["gaps","inclusion"] },
+    { id: 25, name: "פנינה וקנין",    school: "שש־שנתי צפת",          city: "צפת",         region: "north",  level: "six",  topics: ["climate","gaps","parents"],       gives: ["climate","gaps"],          seeks: ["ai","innovation"] },
+    { id: 26, name: "ג׳ני אברמוב",    school: "חטיבת נוף",            city: "אשקלון",      region: "south",  level: "mid",  topics: ["parents","wellbeing","staff"],    gives: ["parents","wellbeing"],     seeks: ["climate","leadership"] },
+    { id: 27, name: "עדי שלום",        school: "יסודי תמר",            city: "כפר סבא",     region: "center", level: "elem", topics: ["ai","inclusion","innovation"],    gives: ["ai","inclusion"],          seeks: ["parents","gaps"] },
+    { id: 28, name: "זיוה מנסור",      school: "תיכון הכרמל",          city: "עוספיה",      region: "haifa",  level: "high", topics: ["gaps","leadership","wellbeing"],  gives: ["leadership","wellbeing"],  seeks: ["ai","staff"] }
+  ]
+};
