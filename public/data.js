@@ -1,15 +1,15 @@
 /* נתוני דוגמה — שמות ובתי ספר בדויים. בגרסה האמיתית יגיעו מטופס ההרשמה. */
 window.SUMMIT = {
   topics: [
-    { id: "climate",    label: "אקלים ומוגנות",      color: "#F0D9A8" },
-    { id: "inclusion",  label: "שילוב והכלה",        color: "#D8A198" },
-    { id: "ai",         label: "AI וטכנולוגיה",      color: "#9FB4F2" },
-    { id: "staff",      label: "צוות וחוסן מורים",   color: "#E6C27F" },
-    { id: "parents",    label: "הורים וקהילה",       color: "#B7D3C4" },
-    { id: "wellbeing",  label: "רווחה רגשית",        color: "#E9B7C9" },
-    { id: "gaps",       label: "צמצום פערים",        color: "#C9B8F0" },
-    { id: "innovation", label: "פדגוגיה חדשנית",     color: "#8FD0E0" },
-    { id: "leadership", label: "ניהול ומנהיגות",     color: "#F4EFE2" }
+    { id: "climate",    label: "אקלים ומוגנות",      color: "#2F7BF5" },
+    { id: "inclusion",  label: "שילוב והכלה",        color: "#E0678F" },
+    { id: "ai",         label: "AI וטכנולוגיה",      color: "#6A5CF0" },
+    { id: "staff",      label: "צוות וחוסן מורים",   color: "#F2994A" },
+    { id: "parents",    label: "הורים וקהילה",       color: "#14B8A6" },
+    { id: "wellbeing",  label: "רווחה רגשית",        color: "#EC6BB0" },
+    { id: "gaps",       label: "צמצום פערים",        color: "#1FA3F2" },
+    { id: "innovation", label: "פדגוגיה חדשנית",     color: "#8B5CF6" },
+    { id: "leadership", label: "ניהול ומנהיגות",     color: "#0D1B4A" }
   ],
   levels: { elem: "יסודי", mid: "חטיבת ביניים", high: "תיכון", six: "שש־שנתי" },
   regions: { north: "צפון", haifa: "חיפה והקריות", center: "מרכז", jlm: "ירושלים והסביבה", south: "דרום" },

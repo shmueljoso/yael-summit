@@ -92,7 +92,7 @@
         const grow = Math.min(1, p * 3);                               // draw in
         const alpha = p < 0.75 ? 1 : 1 - (p - 0.75) / 0.25;            // fade out
         const segs = (g.chain.length - 1) * grow;
-        ctx.strokeStyle = `rgba(240,217,168,${0.35 * alpha})`;
+        ctx.strokeStyle = `rgba(47,123,245,${0.3 * alpha})`;
         ctx.lineWidth = 0.8;
         ctx.beginPath();
         for (let i = 0; i < g.chain.length - 1; i++) {
@@ -108,7 +108,7 @@
       stars.forEach(s => {
         const d = Math.hypot(s.x - pointer.x, s.y - pointer.y);
         if (d < 130) {
-          ctx.strokeStyle = `rgba(240,217,168,${0.4 * (1 - d / 130)})`;
+          ctx.strokeStyle = `rgba(47,123,245,${0.35 * (1 - d / 130)})`;
           ctx.lineWidth = 0.6;
           ctx.beginPath(); ctx.moveTo(pointer.x, pointer.y); ctx.lineTo(s.x, s.y); ctx.stroke();
         }
@@ -121,11 +121,11 @@
           if (s.y < 0) s.y = h; if (s.y > h) s.y = 0;
         }
         const tw = reduceMotion ? 0.8 : 0.55 + 0.45 * Math.sin(time * s.sp + s.tw);
-        ctx.fillStyle = `rgba(244,239,226,${tw})`;
+        ctx.fillStyle = `rgba(47,123,245,${0.25 + 0.4 * tw})`;
         ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
         if (s.r > 1.5) {
           const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r * 6);
-          g.addColorStop(0, `rgba(240,217,168,${0.25 * tw})`); g.addColorStop(1, "rgba(240,217,168,0)");
+          g.addColorStop(0, `rgba(31,163,242,${0.25 * tw})`); g.addColorStop(1, "rgba(31,163,242,0)");
           ctx.fillStyle = g; ctx.beginPath(); ctx.arc(s.x, s.y, s.r * 6, 0, Math.PI * 2); ctx.fill();
         }
       });
@@ -191,7 +191,7 @@
         const on = active(a) && active(b);
         const hov = state.hover && (state.hover === a || state.hover === b);
         const A = px(a), B = px(b);
-        ctx.strokeStyle = hov ? "rgba(240,217,168,.55)" : on ? `rgba(240,217,168,${state.filter ? 0.3 : 0.12})` : "rgba(244,239,226,.03)";
+        ctx.strokeStyle = hov ? "rgba(47,123,245,.55)" : on ? `rgba(47,123,245,${state.filter ? 0.3 : 0.13})` : "rgba(11,12,28,.04)";
         ctx.lineWidth = hov ? 1.1 : 0.7;
         ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
       });
@@ -204,8 +204,8 @@
           const f = Math.max(0, Math.min(1, k * 1.6 - i * 0.25));
           const B = px(n);
           const grad = ctx.createLinearGradient(M.x, M.y, B.x, B.y);
-          grad.addColorStop(0, "rgba(240,217,168,.95)"); grad.addColorStop(1, "rgba(216,161,152,.7)");
-          ctx.strokeStyle = grad; ctx.lineWidth = 1.6;
+          grad.addColorStop(0, "rgba(47,123,245,.95)"); grad.addColorStop(1, "rgba(31,163,242,.75)");
+          ctx.strokeStyle = grad; ctx.lineWidth = 2;
           ctx.beginPath(); ctx.moveTo(M.x, M.y); ctx.lineTo(M.x + (B.x - M.x) * f, M.y + (B.y - M.y) * f); ctx.stroke();
         });
       }
@@ -222,10 +222,10 @@
           g.addColorStop(0, hexA(c, 0.35 * tw)); g.addColorStop(1, hexA(c, 0));
           ctx.fillStyle = g; ctx.beginPath(); ctx.arc(P.x, P.y, r * 5, 0, Math.PI * 2); ctx.fill();
         }
-        ctx.fillStyle = on ? hexA(c, tw) : "rgba(244,239,226,.18)";
+        ctx.fillStyle = on ? hexA(c, tw) : "rgba(11,12,28,.12)";
         ctx.beginPath(); ctx.arc(P.x, P.y, r, 0, Math.PI * 2); ctx.fill();
         if (linked || state.hover === n) {
-          ctx.fillStyle = "#F4EFE2"; ctx.font = "600 13px Assistant, sans-serif"; ctx.textAlign = "center";
+          ctx.fillStyle = "#0B0C1C"; ctx.font = "500 13px Rubik, sans-serif"; ctx.textAlign = "center";
           ctx.fillText(firstName(n.p.name), P.x, P.y - r - 8);
         }
       });
@@ -234,11 +234,11 @@
       if (state.me) {
         const M = { x: state.me.x * w, y: state.me.y * h };
         const pulse = reduceMotion ? 0 : (Math.sin(time * 2) + 1) / 2;
-        ctx.strokeStyle = `rgba(240,217,168,${0.5 - pulse * 0.35})`;
+        ctx.strokeStyle = `rgba(47,123,245,${0.5 - pulse * 0.35})`;
         ctx.lineWidth = 1;
         ctx.beginPath(); ctx.arc(M.x, M.y, 14 + pulse * 8, 0, Math.PI * 2); ctx.stroke();
-        star4(ctx, M.x, M.y, 11, "#F0D9A8");
-        ctx.fillStyle = "#F0D9A8"; ctx.font = "600 13px Assistant, sans-serif"; ctx.textAlign = "center";
+        star4(ctx, M.x, M.y, 12, "#2F7BF5");
+        ctx.fillStyle = "#2F7BF5"; ctx.font = "600 13px Rubik, sans-serif"; ctx.textAlign = "center";
         ctx.fillText(state.me.name || "את/ה", M.x, M.y + 30);
       }
     }
@@ -387,8 +387,8 @@
       <li class="match${ai && ai[m.p.id] ? " is-ai" : ""}">
         <div class="match-score" aria-label="התאמה ${m.pct} אחוז">
           <svg viewBox="0 0 64 64" aria-hidden="true">
-            <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(244,239,226,.08)" stroke-width="2"/>
-            <circle cx="32" cy="32" r="28" fill="none" stroke="#D9B77A" stroke-width="2" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${off}"/>
+            <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(47,123,245,.12)" stroke-width="2"/>
+            <circle cx="32" cy="32" r="28" fill="none" stroke="#2F7BF5" stroke-width="3" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${off}"/>
           </svg>
           <span>${m.pct}%<small>התאמה</small></span>
         </div>
@@ -488,12 +488,12 @@
       for (let i = 0; i < shown; i++) {
         const [a, b] = links[i];
         const fresh = !reduceMotion && i >= shown - 3;
-        ctx.strokeStyle = fresh ? "rgba(240,217,168,.9)" : "rgba(217,183,122,.35)";
+        ctx.strokeStyle = fresh ? "rgba(189,235,250,.95)" : "rgba(31,163,242,.4)";
         ctx.lineWidth = fresh ? 1.4 : 0.8;
         ctx.beginPath(); ctx.moveTo(pts[a].x * w, pts[a].y * h); ctx.lineTo(pts[b].x * w, pts[b].y * h); ctx.stroke();
       }
-      pts.forEach(p => { ctx.fillStyle = "rgba(244,239,226,.85)"; ctx.beginPath(); ctx.arc(p.x * w, p.y * h, 1.8, 0, Math.PI * 2); ctx.fill(); });
-      ctx.fillStyle = "rgba(240,217,168,.9)"; ctx.font = "600 12px Assistant, sans-serif"; ctx.textAlign = "right";
+      pts.forEach(p => { ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.beginPath(); ctx.arc(p.x * w, p.y * h, 1.8, 0, Math.PI * 2); ctx.fill(); });
+      ctx.fillStyle = "rgba(189,235,250,.95)"; ctx.font = "500 12px Rubik, sans-serif"; ctx.textAlign = "right";
       ctx.fillText(`${shown} חיבורים חדשים היום`, w - 14, h - 14);
     }
     build();

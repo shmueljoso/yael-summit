@@ -7,14 +7,15 @@
 <meta name="description" content="הכנס השנתי של קרן יעל למנהלות ולמנהלי בתי ספר — חיבורים בין מנהלים שיוצרים רשת.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bellefair&family=Assistant:wght@300;400;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&family=Assistant:wght@400;600&display=swap">
 <link rel="stylesheet" href="styles.css">
+<link rel="icon" type="image/png" href="assets/yael-star.png">
 </head>
 <body>
 
 <header class="topbar" id="top">
   <a class="brand" href="#top" aria-label="חיבורים — לראש העמוד">
-    <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M6 22 L13 9 L20 17 L27 6" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="22" r="2.2" fill="currentColor"/><circle cx="13" cy="9" r="1.6" fill="currentColor"/><circle cx="20" cy="17" r="2.6" fill="currentColor"/><circle cx="27" cy="6" r="1.4" fill="currentColor"/></svg>
+    <img class="brand-mark" src="assets/yael-star.png" alt="">
     <span class="brand-name">קרן יעל</span>
   </a>
   <nav class="nav" aria-label="ניווט ראשי">
@@ -24,27 +25,32 @@
     <a href="#event">ביום הכנס</a>
     <a href="#after">אחרי הכנס</a>
   </nav>
-  <a class="btn btn-ghost btn-sm" href="#match">הרשמה</a>
+  <a class="btn btn-primary btn-sm" href="#match">הרשמה</a>
 </header>
 
 <main>
 
   <!-- HERO -->
-  <section class="hero">
-    <canvas id="sky" class="sky" aria-hidden="true"></canvas>
-    <div class="hero-inner wrap">
-      <p class="eyebrow">קרן יעל · הכנס השנתי למנהלות ולמנהלי בתי ספר</p>
-      <h1 class="display">חיבורים</h1>
-      <p class="lede">כל מנהל ומנהלת הם כוכב. <br class="br-wide">כשמחברים ביניהם — נוצרת קבוצת כוכבים.</p>
-      <div class="hero-actions">
-        <a class="btn btn-gold" href="#match">מצאו את החיבורים שלכם</a>
-        <a class="btn btn-ghost" href="#idea">איך זה עובד</a>
+  <section class="hero wrap">
+    <div class="hero-panel">
+      <canvas id="sky" class="sky" aria-hidden="true"></canvas>
+      <div class="hero-inner">
+        <p class="eyebrow">הכנס השנתי למנהלות ולמנהלי בתי ספר</p>
+        <h1 class="display">חיבורים</h1>
+        <p class="lede">כל מנהל ומנהלת הם כוכב. כשמחברים ביניהם — נוצרת רשת.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#match">מצאו את החיבורים שלכם</a>
+          <a class="btn btn-soft" href="#idea">איך זה עובד</a>
+        </div>
+        <dl class="hero-facts">
+          <div><dt>מועד</dt><dd>יפורסם בקרוב</dd></div>
+          <div><dt>משתתפים</dt><dd>מנהלים מכל הארץ</dd></div>
+          <div><dt>החיבורים</dt><dd>מתחילים כבר עכשיו</dd></div>
+        </dl>
       </div>
-      <dl class="hero-facts">
-        <div><dt>מועד</dt><dd>יפורסם בקרוב</dd></div>
-        <div><dt>מי מגיע</dt><dd>מנהלות ומנהלי בתי ספר מכל הארץ</dd></div>
-        <div><dt>החיבורים מתחילים</dt><dd>כבר עכשיו, לפני הכנס</dd></div>
-      </dl>
+      <div class="hero-art" aria-hidden="true">
+        <img class="hero-star" src="assets/yael-star.png" alt="">
+      </div>
     </div>
   </section>
 
@@ -75,7 +81,7 @@
   </section>
 
   <!-- MAP -->
-  <section class="section section-map" id="map">
+  <section class="section" id="map">
     <div class="wrap">
       <div class="section-head">
         <p class="eyebrow">מפת הכוכבים</p>
@@ -145,13 +151,13 @@
           <label for="f-note">משפט אחד על בית הספר <span class="opt">(רשות)</span></label>
           <textarea id="f-note" name="note" rows="2" maxlength="200">בית ספר צומח עם הרבה עולים חדשים. מחפשת דרכים לחבר הורים שלא מדברים עברית.</textarea>
         </div>
-        <button class="btn btn-gold btn-block" type="submit">הדליקו את הכוכב שלי</button>
+        <button class="btn btn-primary btn-block" type="submit">הדליקו את הכוכב שלי</button>
       </form>
 
       <div class="results" id="results" aria-live="polite">
         <div class="results-head">
           <h3>שלושת החיבורים הראשונים שלך</h3>
-          <button class="btn btn-ghost btn-sm" type="button" id="aiBtn">
+          <button class="btn btn-soft btn-sm" type="button" id="aiBtn">
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1 L9.3 6.7 L15 8 L9.3 9.3 L8 15 L6.7 9.3 L1 8 L6.7 6.7 Z" fill="currentColor"/></svg>
             ניסוח אישי ב-AI
           </button>
@@ -163,7 +169,7 @@
   </section>
 
   <!-- EVENT -->
-  <section class="section section-event" id="event">
+  <section class="section" id="event">
     <div class="wrap">
       <div class="section-head">
         <p class="eyebrow">ביום הכנס</p>
@@ -227,10 +233,7 @@
 </main>
 
 <footer class="footer wrap">
-  <div class="brand">
-    <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M6 22 L13 9 L20 17 L27 6" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="22" r="2.2" fill="currentColor"/><circle cx="13" cy="9" r="1.6" fill="currentColor"/><circle cx="20" cy="17" r="2.6" fill="currentColor"/><circle cx="27" cy="6" r="1.4" fill="currentColor"/></svg>
-    <span class="brand-name">קרן יעל</span>
-  </div>
+  <img class="footer-logo" src="assets/yael-logo.png" alt="קרן יעל — Yael Foundation">
   <p>הכנס השנתי למנהלות ולמנהלי בתי ספר · אב־טיפוס לעיון</p>
 </footer>
 
