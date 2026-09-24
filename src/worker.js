@@ -27,6 +27,7 @@ const ROUTES = [
   ["POST", "/api/connections/:id/accept", conn.accept],
   ["DELETE", "/api/connections/:id", conn.remove],
   ["GET", "/api/map", conn.map],
+  ["GET", "/api/stats", conn.stats],
   ["GET", "/api/messages", msg.conversations],
   ["GET", "/api/messages/:id", msg.thread],
   ["POST", "/api/messages/:id", msg.send],

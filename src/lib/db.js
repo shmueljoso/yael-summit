@@ -3,6 +3,7 @@
  * database needs no migration step.
  */
 import { error, getCookie, randomId } from "./http.js";
+import { hasDemo, seedDemo, removeDemo } from "./demo.js";
 
 export const TOPICS = {
   identity: "Jewish identity",
@@ -45,12 +46,32 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS posts_time ON posts (created_at)`,
 ];
 
+// Columns added after launch. ALTER fails harmlessly when the column already exists.
+const MIGRATIONS = [
+  "ALTER TABLE users ADD COLUMN is_demo INTEGER DEFAULT 0",
+  "ALTER TABLE users ADD COLUMN lat REAL",
+  "ALTER TABLE users ADD COLUMN lng REAL",
+];
+
+async function prepare(env) {
+  const d = env.DB;
+  await d.batch(SCHEMA.map((q) => d.prepare(q)));
+  for (const q of MIGRATIONS) { try { await d.prepare(q).run(); } catch { /* already applied */ } }
+  // Sample content: DEMO_DATA "on" keeps it, "off" removes it (see demo.js).
+  const demo = String(env.DEMO_DATA || "off").toLowerCase() === "on";
+  const present = await hasDemo(d);
+  if (demo && !present) await seedDemo(d);
+  if (!demo && present) await removeDemo(d);
+}
+
 let ready = null;
 export function db(env) {
   if (!env.DB) throw Object.assign(new Error("db_not_configured"), { status: 503 });
-  ready ??= env.DB.batch(SCHEMA.map((s) => env.DB.prepare(s))).catch((e) => { ready = null; throw e; });
+  ready ??= prepare(env).catch((e) => { ready = null; throw e; });
   return ready.then(() => env.DB);
 }
+
+export const demoOn = (env) => String(env.DEMO_DATA || "off").toLowerCase() === "on";
 
 /** Canonical key for a pair of users, so each connection or conversation has one row. */
 export const pairOf = (x, y) => (x < y ? [x, y] : [y, x]);
@@ -64,6 +85,7 @@ export function card(u) {
     id: u.id, full_name: u.full_name, role_title: u.role_title, school: u.school, city: u.city, country: u.country,
     level: u.level, bio: u.bio, topics: parse(u.topics, []), gives: parse(u.gives, []), seeks: parse(u.seeks, []),
     avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar}` : null,
+    ...(u.is_demo ? { sample: true } : {}),
   };
 }
 /** Adds contact details: only for yourself and for accepted connections. */

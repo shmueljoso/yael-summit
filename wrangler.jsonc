@@ -18,7 +18,9 @@
   ],
   // GEMINI_API_KEY is a secret: add it in the dashboard (Settings → Variables and Secrets).
   "vars": {
-    "GEMINI_MODEL": "gemini-3.5-flash-lite"
+    "GEMINI_MODEL": "gemini-3.5-flash-lite",
+    // Sample principals, connections and posts for showing the site. "off" deletes them all.
+    "DEMO_DATA": "on"
   },
   "observability": { "enabled": true }
 }
