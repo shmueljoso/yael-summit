@@ -9,7 +9,7 @@
  *
  * Needs a KV namespace bound as BOARD (Pages → Settings → Bindings → KV namespace).
  */
-import { json, clip, sameOrigin, gemini } from "../../lib/gemini.js";
+import { json, clip, sameOrigin, gemini } from "../lib/gemini.js";
 
 const KEY = "posts";
 const KEEP = 150;           // posts kept on the board

@@ -14,7 +14,7 @@
  *   GEMINI_API_KEY  (secret, required)
  *   GEMINI_MODEL    (optional)
  */
-import { json, clip, sameOrigin, sha256, gemini, modelOf } from "../../lib/gemini.js";
+import { json, clip, sameOrigin, sha256, gemini, modelOf } from "../lib/gemini.js";
 
 const CACHE_SECONDS = 60 * 60 * 24 * 30;
 
