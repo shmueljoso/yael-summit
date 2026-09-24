@@ -8,9 +8,13 @@
     "binding": "ASSETS",
     "run_worker_first": ["/api/*"]
   },
-  // The message board's storage (the "yael-board" namespace).
+  // Photos, AI answer cache and rate limits (the "yael-board" namespace).
   "kv_namespaces": [
     { "binding": "BOARD", "id": "e092877d01184744b378d6f67b37f5b7" }
+  ],
+  // Principals, connections, messages and posts (the "yael-summit" D1 database).
+  "d1_databases": [
+    { "binding": "DB", "database_name": "yael-summit", "database_id": "36758961-8d03-4c9b-8a95-ec46105a4810" }
   ],
   // GEMINI_API_KEY is a secret: add it in the dashboard (Settings → Variables and Secrets).
   "vars": {
