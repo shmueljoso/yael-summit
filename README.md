@@ -15,17 +15,19 @@
 ## מבנה
 ```
 public/            האתר עצמו (HTML/CSS/JS, בלי שלב בנייה)
-functions/api/     הנתיבים של Cloudflare Pages: /api/connect, /api/board
-src/api/           הקוד של הנתיבים: connect.js (ניסוח חיבורים) · board.js (לוח ההודעות)
+src/worker.js      נקודת הכניסה של ה-Worker: מגיש את public/ ומפנה את /api/* לקוד
+src/api/           connect.js (ניסוח חיבורים) · board.js (לוח ההודעות)
 src/lib/gemini.js  קריאה משותפת ל-Gemini
+wrangler.jsonc     הגדרות ה-Worker (קבצים סטטיים, אחסון BOARD, שם המודל)
+functions/api/     אותם נתיבים בפורמט של Cloudflare Pages (לא בשימוש ב-Worker)
 ```
 
-## פריסה ב-Cloudflare Pages
-1. Workers & Pages → Create → Pages → Connect to Git → לבחור את `yael-summit`.
-2. Production branch: `main`. Framework preset: **None**. Build command: ריק. Build output directory: **`public`**.
-3. Settings → Variables and Secrets → Add → סוג **Secret**, שם **`GEMINI_API_KEY`**. (לא חובה: משתנה רגיל `GEMINI_MODEL`.)
-4. ללוח ההודעות: Workers & Pages → KV → Create namespace (למשל `yael-board`). אחר כך בפרויקט: Settings → Bindings → Add → KV namespace, שם המשתנה **`BOARD`**.
-5. Deployments → Retry deployment, כדי שההגדרות ייכנסו לתוקף.
+## פריסה ב-Cloudflare (Worker)
+הפרויקט `yael-summit` ב-Workers & Pages מחובר לגיטהאב, ובונה את `main` עם `npx wrangler deploy` לפי `wrangler.jsonc`.
+1. Settings → Build: Build command ריק, Deploy command `npx wrangler deploy`.
+2. אחרי הפריסה: Settings → Variables and Secrets → Add → סוג **Secret**, שם **`GEMINI_API_KEY`**.
+3. אחסון הלוח (`BOARD`) נוצר אוטומטית בפריסה.
+4. להחלפת מודל משנים את `GEMINI_MODEL` ב-`wrangler.jsonc` (כל פריסה דורסת משתנים רגילים מהדשבורד; סודות נשמרים).
 
 ## חיסכון בקרדיטים
 - ההתאמה בין מנהלים לא משתמשת ב-AI בכלל.
