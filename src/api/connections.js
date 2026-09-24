@@ -116,14 +116,14 @@ export async function map({ request, env }) {
   const u = await requireUser(env, request);
   const d = await db(env);
   const [{ results: users }, { results: edges }] = await Promise.all([
-    d.prepare("SELECT id, full_name, school, city, country, topics, avatar, lat, lng, is_demo FROM users").all(),
+    d.prepare("SELECT id, full_name, school, city, country, level, topics, avatar, lat, lng, is_demo FROM users").all(),
     d.prepare("SELECT a, b FROM connections WHERE status = 'accepted'").all(),
   ]);
   return json({
     me: u.id,
     nodes: users.map((x) => {
       const [lat, lng] = x.lat != null ? [x.lat, x.lng] : locate(x.city, x.country) || [null, null];
-      return { id: x.id, name: x.full_name, school: x.school, city: x.city, country: x.country, topics: parse(x.topics), lat, lng, sample: !!x.is_demo, avatar: x.avatar ? `/api/avatar/${x.id}?v=${x.avatar}` : null };
+      return { id: x.id, name: x.full_name, school: x.school, city: x.city, country: x.country, level: x.level || "", topics: parse(x.topics), lat, lng, sample: !!x.is_demo, avatar: x.avatar ? `/api/avatar/${x.id}?v=${x.avatar}` : null };
     }),
     edges: edges.map((e) => [e.a, e.b]),
   });

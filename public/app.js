@@ -23,6 +23,8 @@ const I = {
   send: '<path d="M4 12 20 4l-6 16-3-7z"/>',
   spark: '<path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"/>',
   back: '<path d="M15 5 8 12l7 7"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/>',
 };
 const icon = (name, fill = false) =>
   `<svg viewBox="0 0 24 24" aria-hidden="true" fill="${fill ? "currentColor" : "none"}" stroke="${fill ? "none" : "currentColor"}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${I[name]}</svg>`;
@@ -71,6 +73,16 @@ async function api(method, path, body) {
   }
   return data;
 }
+
+// Night (the summit's colors) or Day (light). Chosen per device; the maps stay night skies either way.
+const isDay = () => document.documentElement.dataset.theme === "day";
+function setTheme(day) {
+  if (day) document.documentElement.dataset.theme = "day"; else delete document.documentElement.dataset.theme;
+  $('meta[name="theme-color"]').content = day ? "#F5F3EE" : "#060D26";
+  try { localStorage.setItem("theme", day ? "day" : "night"); } catch { /* storage unavailable */ }
+  renderChrome();
+}
+const themeButton = () => `<button class="btn btn-quiet theme-btn" id="themeBtn" type="button" aria-label="${isDay() ? "Switch to night mode" : "Switch to day mode"}" title="${isDay() ? "Night mode" : "Day mode"}">${icon(isDay() ? "moon" : "sun")}</button>`;
 
 const state = { me: null, counts: { requests: 0, unread: 0 }, topics: {}, levels: {} };
 const topicLabel = (t) => state.topics[t] || t;
@@ -156,12 +168,13 @@ function renderChrome() {
   $("#nav").innerHTML = signed
     ? NAV.map(([href, label, ic]) => `<a href="${href}" ${current(href) ? 'aria-current="page"' : ""}>${label}${badge(ic)}</a>`).join("")
     : `<a href="#/summit" ${current("#/summit") ? 'aria-current="page"' : ""}>The Summit</a>`;
-  $("#navEnd").innerHTML = signed
+  $("#navEnd").innerHTML = themeButton() + (signed
     ? `<button class="me-btn" id="meBtn" aria-haspopup="true" aria-expanded="false">${avatar(state.me, "xs")}<span class="me-name">${esc(first(state.me.full_name))}</span></button>
        <div class="menu" id="meMenu" hidden>
          <a href="#/u/${state.me.id}">My profile</a><a href="#/me/edit">Edit profile</a><a href="#/summit">The Summit</a><button id="signOut">Sign out</button>
        </div>`
-    : `<a class="btn btn-quiet btn-sm" href="#/signin">Sign in</a><a class="btn btn-gold btn-sm" href="#/join">Join</a>`;
+    : `<a class="btn btn-quiet btn-sm" href="#/signin">Sign in</a><a class="btn btn-gold btn-sm" href="#/join">Join</a>`);
+  $("#themeBtn").onclick = () => setTheme(!isDay());
   const tab = $("#tabbar");
   tab.hidden = !signed;
   if (signed) {
@@ -221,10 +234,10 @@ function sky(cv) {
   };
   build(); const onR = () => build(); addEventListener("resize", onR); onLeave(() => removeEventListener("resize", onR));
   animate((t) => {
-    const { c, w, h } = g, k = (reduceMotion ? 6000 : t) / 1000; c.clearRect(0, 0, w, h);
+    const { c, w, h } = g, k = (reduceMotion ? 6000 : t) / 1000, day = isDay(); c.clearRect(0, 0, w, h);
     for (const gr of groups) {
       const p = ((k + gr.ph) % gr.per) / gr.per, grow = Math.min(1, p * 3), a = p < .75 ? 1 : 1 - (p - .75) / .25;
-      c.strokeStyle = `rgba(216,176,96,${.35 * a})`; c.lineWidth = .8; c.beginPath();
+      c.strokeStyle = day ? `rgba(176,132,48,${.45 * a})` : `rgba(216,176,96,${.35 * a})`; c.lineWidth = .8; c.beginPath();
       const segs = (gr.chain.length - 1) * grow;
       for (let i = 0; i < gr.chain.length - 1; i++) {
         const f = Math.max(0, Math.min(1, segs - i)); if (!f) break;
@@ -234,7 +247,7 @@ function sky(cv) {
     }
     for (const s of stars) {
       const tw = reduceMotion ? .8 : .5 + .5 * Math.sin(k * 1.3 + s.t);
-      c.fillStyle = `rgba(242,240,234,${tw})`; c.beginPath(); c.arc(s.x, s.y, s.s, 0, 7); c.fill();
+      c.fillStyle = day ? `rgba(24,43,110,${tw * .55})` : `rgba(242,240,234,${tw})`; c.beginPath(); c.arc(s.x, s.y, s.s, 0, 7); c.fill();
     }
   });
 }
@@ -323,9 +336,9 @@ function landing(mode) {
           <li>Ask the whole network, in any language.</li>
         </ul>
         <div class="land-stats" id="landStats" hidden></div>
-        <div class="land-foot"><a href="#/summit" class="btn btn-quiet">About the summit →</a></div>
+        <div class="land-foot"><button type="button" class="btn btn-gold only-phone" id="toForm">${join ? "Create your profile" : "Sign in"}</button><a href="#/summit" class="btn btn-quiet">About the summit →</a></div>
       </div>
-      <div class="auth panel-lg fade-in">
+      <div class="auth panel-lg fade-in" id="authCard">
         <p class="label">${join ? "Join the constellation" : "Welcome back"}</p>
         <h2>${join ? "Create your profile" : "Sign in"}</h2>
         <form id="authForm" novalidate>
@@ -347,6 +360,7 @@ function landing(mode) {
     box.hidden = false;
   }).catch(() => {});
   $$("[data-to]").forEach((b) => (b.onclick = () => go(`#/${b.dataset.to}`)));
+  $("#toForm").onclick = () => { $("#authCard").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }); setTimeout(() => $("#authForm input")?.focus({ preventScroll: true }), reduceMotion ? 0 : 450); };
   $("#authForm").onsubmit = async (e) => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target));
@@ -455,9 +469,13 @@ function people(mode) {
     topic = c.dataset.topic; $$("#ptopics .chip").forEach((x) => (x.className = `chip ${x === c ? "gold" : "plain"}`)); then(topic);
   };
 
-  if (mode === "map") { constellationMap((setFilter) => ($("#ptopics").onclick = (e) => pickTopic(e, setFilter))); return; }
-  if (mode === "globe") { globeMap((setFilter) => ($("#ptopics").onclick = (e) => pickTopic(e, setFilter))); return; }
-  if (mode === "world") { worldMap((setFilter) => ($("#ptopics").onclick = (e) => pickTopic(e, setFilter))); return; }
+  if (mode !== "list") {
+    mapStyle.filter = ""; mapStyle.changed = null;
+    const ctl = $("#ptopics"); ctl.className = "map-controls"; ctl.removeAttribute("role");
+    const ready = (nodes) => mapControls(ctl, nodes);
+    ({ map: constellationMap, world: worldMap, globe: globeMap })[mode](ready);
+    return;
+  }
 
   const token = routeToken, body = $("#pbody");
   async function refresh() {
@@ -474,6 +492,44 @@ function people(mode) {
   refresh();
 }
 
+// Shared by the three maps: what the colors mean, and which group is highlighted.
+const TOPIC_COLORS = ["#8DB8FF", "#F1D591", "#7FDDB0", "#E78FB3", "#B39CFF", "#6FD3E8", "#F2A66B", "#A8E26B", "#FF9F9F", "#5FA8FF", "#E6A8FF", "#FFD36B"];
+const LEVEL_COLORS = { early: "#FF9F9F", elem: "#F1D591", mid: "#7FDDB0", high: "#8DB8FF", k12: "#B39CFF", supp: "#F2A66B", other: "#A9B3D6" };
+const mapStyle = { by: (() => { try { return localStorage.getItem("mapBy") || "topic"; } catch { return "topic"; } })(), filter: "", changed: null };
+const groupOf = (n) => (mapStyle.by === "level" ? n.level || "" : n.topics[0] || "");
+function groups() {
+  if (mapStyle.by === "level") return Object.entries(state.levels).map(([k, v]) => [k, v, LEVEL_COLORS[k] || "#A9B3D6"]);
+  return Object.entries(state.topics).map(([k, v], i) => [k, v, TOPIC_COLORS[i % TOPIC_COLORS.length]]);
+}
+function colorOf(n) { const g = groups().find(([k]) => k === groupOf(n)); return g ? g[2] : "#A9B3D6"; }
+const inFocus = (n) => !mapStyle.filter || (mapStyle.by === "level" ? n.level === mapStyle.filter : n.topics.includes(mapStyle.filter));
+
+/** "Color by" switch and a clickable legend, shared by Constellation, World and Globe. */
+function mapControls(box, nodes) {
+  const counts = new Map();
+  for (const n of nodes) { const k = groupOf(n); counts.set(k, (counts.get(k) || 0) + 1); }
+  box.innerHTML = `
+    <div class="colorby"><span class="tiny">Color by</span>
+      <div class="seg" role="radiogroup" aria-label="Color by">
+        <label><input type="radio" name="cb" value="topic" id="cb-topic" ${mapStyle.by === "topic" ? "checked" : ""}>Main topic</label>
+        <label><input type="radio" name="cb" value="level" id="cb-level" ${mapStyle.by === "level" ? "checked" : ""}>School type</label>
+      </div></div>
+    <div class="chips legend" role="group" aria-label="Highlight a group">
+      <button class="chip ${mapStyle.filter ? "plain" : "gold"}" data-group="">All</button>
+      ${groups().map(([k, v, c]) => `<button class="chip ${mapStyle.filter === k ? "gold" : "plain"}" data-group="${k}" ${counts.get(k) ? "" : "disabled"}><i style="background:${c};box-shadow:0 0 8px ${c}"></i>${esc(v)}<small>${counts.get(k) || 0}</small></button>`).join("")}
+    </div>`;
+  $$("[name=cb]", box).forEach((r) => (r.onchange = () => {
+    mapStyle.by = r.value; mapStyle.filter = "";
+    try { localStorage.setItem("mapBy", r.value); } catch { /* storage unavailable */ }
+    mapControls(box, nodes); mapStyle.changed?.();
+  }));
+  $(".legend", box).onclick = (e) => {
+    const b = e.target.closest("[data-group]"); if (!b || b.disabled) return;
+    mapStyle.filter = mapStyle.filter === b.dataset.group ? "" : b.dataset.group;
+    mapControls(box, nodes); mapStyle.changed?.();
+  };
+}
+
 async function constellationMap(onFilterReady) {
   const token = routeToken, body = $("#pbody");
   let data;
@@ -483,20 +539,23 @@ async function constellationMap(onFilterReady) {
     <div class="map-legend"><span><i style="background:var(--gold)"></i>your connections</span><span><i style="background:var(--sky)"></i>other connections</span><span>${data.nodes.length} principals · ${data.edges.length} connections</span></div>
     <div class="map-tip" id="mapTip" hidden></div></div>`;
   const cv = $("#mapCv"), tip = $("#mapTip");
-  const topicKeys = Object.keys(state.topics);
-  const COLORS = ["#8DB8FF", "#F1D591", "#7FDDB0", "#E78FB3", "#B39CFF", "#6FD3E8", "#F2A66B", "#9FB0FF", "#E6C07A", "#86E0C8", "#FF9F9F", "#C7D2FF"];
-  let filter = "";
-  onFilterReady((f) => (filter = f));
+  onFilterReady(data.nodes);
   const mine = new Set(data.edges.filter((e) => e.includes(data.me)).flat());
 
-  let g, nodes, byId;
+  let g, nodes, byId, labels = [];
   const layout = () => {
     g = fit(cv);
-    const r = seeded(99);
+    const r = seeded(99), keys = groups().map(([k]) => k).filter((k) => data.nodes.some((n) => groupOf(n) === k));
     nodes = data.nodes.map((n) => {
-      const ti = Math.max(0, topicKeys.indexOf(n.topics[0] || ""));
-      const a = (ti / topicKeys.length) * Math.PI * 2 - Math.PI / 2, center = n.id === data.me;
-      return { ...n, x: center ? .5 : .5 + Math.cos(a) * .3 + (r() - .5) * .16, y: center ? .5 : .5 + Math.sin(a) * .32 + (r() - .5) * .16, c: n.topics[0] ? COLORS[ti % COLORS.length] : "#A9B3D6", t: r() * 6 };
+      const gi = keys.indexOf(groupOf(n)), center = n.id === data.me;
+      const a = gi < 0 ? r() * Math.PI * 2 : (gi / Math.max(1, keys.length)) * Math.PI * 2 - Math.PI / 2, rr = gi < 0 ? .12 : .3;
+      return { ...n, x: center ? .5 : .5 + Math.cos(a) * rr + (r() - .5) * .16, y: center ? .5 : .5 + Math.sin(a) * (rr + .02) + (r() - .5) * .16, c: colorOf(n), t: r() * 6 };
+    });
+    // group names placed just outside each cluster
+    const all = groups();
+    labels = keys.map((k, gi) => {
+      const a = (gi / Math.max(1, keys.length)) * Math.PI * 2 - Math.PI / 2, [, name, color] = all.find(([kk]) => kk === k);
+      return { k, name, color, x: .5 + Math.cos(a) * .44, y: .5 + Math.sin(a) * .44 };
     });
     for (let it = 0; it < 120; it++) for (const n of nodes) {
       if (n.id === data.me) continue;
@@ -507,6 +566,7 @@ async function constellationMap(onFilterReady) {
   };
   layout();
   addEventListener("resize", layout); onLeave(() => removeEventListener("resize", layout));
+  mapStyle.changed = layout;
   let hover = null;
   const P = (n) => [n.x * g.w, n.y * g.h];
   const rd = seeded(5), dust = Array.from({ length: 140 }, () => ({ x: rd(), y: rd(), s: rd() < .1 ? 1.6 : 1, a: .15 + rd() * .35 }));
@@ -514,7 +574,16 @@ async function constellationMap(onFilterReady) {
   animate((t) => {
     const { c, w, h } = g, k = t / 1000; c.clearRect(0, 0, w, h);
     for (const s of dust) { c.fillStyle = `rgba(242,240,234,${s.a})`; c.fillRect(s.x * w, s.y * h, s.s, s.s); }
-    const on = (n) => !filter || n.topics.includes(filter);
+    const on = inFocus;
+    if (w >= 600) { // on narrow screens the legend above the map does this job
+      c.font = "600 11px Montserrat, DM Sans, sans-serif"; c.textAlign = "center";
+      for (const l of labels) {
+        const text = l.name.toUpperCase(), half = c.measureText(text).width / 2 + 10;
+        c.globalAlpha = !mapStyle.filter || mapStyle.filter === l.k ? .9 : .2;
+        c.fillStyle = l.color; c.fillText(text, Math.min(w - half, Math.max(half, l.x * w)), Math.min(h - 10, Math.max(16, l.y * h)));
+      }
+      c.globalAlpha = 1;
+    }
     for (const [a, b] of data.edges) {
       const A = byId.get(a), B = byId.get(b); if (!A || !B) continue;
       const isMine = a === data.me || b === data.me;
@@ -555,7 +624,7 @@ async function worldMap(onFilterReady) {
     <div class="map-tip" id="mapTip" hidden></div></div>
     ${placed.length < data.nodes.length ? `<p class="tiny" style="margin-top:10px">${data.nodes.length - placed.length} principal(s) aren't on the map yet: add a city and country to the profile.</p>` : ""}`;
   const cv = $("#worldCv"), tip = $("#mapTip");
-  let filter = ""; onFilterReady((f) => (filter = f));
+  onFilterReady(data.nodes);
   const mine = new Set(data.edges.filter((e) => e.includes(data.me)).flat());
 
   // Projection: equirectangular, trimmed to where people live (lat 78°N to 56°S).
@@ -596,7 +665,7 @@ async function worldMap(onFilterReady) {
   animate((t) => {
     const { c, w, h } = g, k = t / 1000;
     c.clearRect(0, 0, w, h); c.drawImage(dots, 0, 0, w, h);
-    const on = (n) => !filter || n.topics.includes(filter);
+    const on = inFocus;
     data.edges.forEach(([a, b], i) => {
       const A = byId.get(a), B = byId.get(b); if (!A || !B) return;
       const isMine = a === data.me || b === data.me, [cx, cy] = arc(A, B);
@@ -612,7 +681,7 @@ async function worldMap(onFilterReady) {
       const me = n.id === data.me, tw = reduceMotion ? 1 : .75 + .25 * Math.sin(k * 1.4 + n.t);
       const rad = me ? 6 : n === hover ? 5.5 : mine.has(n.id) ? 4 : 3.2;
       c.globalAlpha = on(n) || me ? tw : .15;
-      c.fillStyle = me || mine.has(n.id) ? "#F1D591" : "#CFE0FF"; c.shadowColor = c.fillStyle; c.shadowBlur = me || n === hover ? 16 : 7;
+      c.fillStyle = me ? "#F1D591" : colorOf(n); c.shadowColor = c.fillStyle; c.shadowBlur = me || n === hover ? 16 : 7;
       c.beginPath(); c.arc(n.x, n.y, rad, 0, 7); c.fill(); c.shadowBlur = 0; c.globalAlpha = 1;
       if (me || n === hover) { c.fillStyle = "#F2F0EA"; c.font = "500 12px DM Sans, sans-serif"; c.textAlign = "center"; c.fillText(me ? "You" : n.name, n.x, n.y - rad - 7); }
     }
@@ -639,7 +708,7 @@ async function globeMap(onFilterReady) {
     <div class="map-legend"><span><i style="background:var(--gold)"></i>your connections</span><span><i style="background:var(--sky)"></i>other connections</span><span>Drag to spin the globe</span></div>
     <div class="map-tip" id="mapTip" hidden></div></div>`;
   const cv = $("#globeCv"), tip = $("#mapTip");
-  let filter = ""; onFilterReady((f) => (filter = f));
+  onFilterReady(data.nodes);
   const mine = new Set(data.edges.filter((e) => e.includes(data.me)).flat());
   const RAD = Math.PI / 180;
 
@@ -697,7 +766,7 @@ async function globeMap(onFilterReady) {
     c.fillStyle = sea; c.beginPath(); c.arc(cx, cy, R, 0, 7); c.fill();
     // continents as dots, dimmer toward the edge
     for (const [la, lo] of land) { const [x, y, z] = project(la, lo); if (z > 0) { c.fillStyle = `rgba(141,184,255,${.12 + .3 * z})`; c.fillRect(x - .9, y - .9, 1.8, 1.8); } }
-    const on = (n) => !filter || n.topics.includes(filter);
+    const on = inFocus;
     // arcs: draw only the segments on the visible side
     arcs.forEach((a, i) => {
       const isMine = a.a === data.me || a.b === data.me;
@@ -718,7 +787,7 @@ async function globeMap(onFilterReady) {
       const isMe = n.id === data.me, tw = reduceMotion ? 1 : .75 + .25 * Math.sin(k * 1.4 + n.t);
       const rad = (isMe ? 6 : n === hover ? 5.5 : mine.has(n.id) ? 4 : 3.2) * (.6 + .4 * z);
       c.globalAlpha = (on(n) || isMe ? tw : .15) * (.5 + .5 * z);
-      c.fillStyle = isMe || mine.has(n.id) ? "#F1D591" : "#DCE8FF"; c.shadowColor = c.fillStyle; c.shadowBlur = isMe || n === hover ? 16 : 7;
+      c.fillStyle = isMe ? "#F1D591" : colorOf(n); c.shadowColor = c.fillStyle; c.shadowBlur = isMe || n === hover ? 16 : 7;
       c.beginPath(); c.arc(x, y, rad, 0, 7); c.fill(); c.shadowBlur = 0; c.globalAlpha = 1;
       if (isMe || n === hover) { c.fillStyle = "#F2F0EA"; c.font = "500 12px DM Sans, sans-serif"; c.textAlign = "center"; c.fillText(isMe ? "You" : n.name, x, y - rad - 7); }
       shown.push([n, x, y]);
@@ -767,7 +836,7 @@ async function profile(id) {
         <div class="id">
           <h1 class="display">${esc(p.full_name)}</h1>${p.sample ? `<p>${sampleTag(p)} <span class="tiny">A sample profile, here to show how the network works.</span></p>` : ""}
           <p class="role">${esc([p.role_title, p.school].filter(Boolean).join(" · ") || "Principal")}</p>
-          <div class="loc">${place(p) ? `<span>${esc(place(p))}</span>` : ""}${p.level ? `<span>${esc(state.levels[p.level] || "")}</span>` : ""}<span><b style="color:var(--gold-2)">${p.connections}</b> connection${p.connections === 1 ? "" : "s"}</span></div>
+          <div class="loc">${place(p) ? `<span>${esc(place(p))}</span>` : ""}${p.level ? `<span>${esc(state.levels[p.level] || "")}</span>` : ""}<span><b style="color:var(--gold-ink)">${p.connections}</b> connection${p.connections === 1 ? "" : "s"}</span></div>
         </div>
         <div class="acts" id="profActs">${connectButtons(p)}${p.connection === "connected" ? `<span class="state connected" style="align-self:center">Connected</span>` : ""}</div>
       </div>
@@ -980,11 +1049,12 @@ async function board() {
       <div class="board">
         <div class="stack" id="posts">${data.posts.length ? data.posts.map((p) => postHTML(p, data.me)).join("") : `<div class="empty" id="noPosts"><b>No posts yet.</b><span>Ask a question, share an idea, or offer help. Write in any language — it's translated to English for everyone.</span></div>`}</div>
         <form class="panel-lg compose" id="compose" novalidate>
-          <div class="seg" role="radiogroup" aria-label="Post type">
+          <button type="button" class="compose-open" id="composeOpen">${avatar(state.me, "sm")}<span class="grow">Ask, share an idea or offer help…</span><span class="plus" aria-hidden="true">+</span></button>
+          <div class="compose-head"><div class="seg" role="radiogroup" aria-label="Post type">
             <label><input type="radio" name="kind" value="question" id="k-q" checked>Question</label>
             <label><input type="radio" name="kind" value="idea" id="k-i">Idea</label>
             <label><input type="radio" name="kind" value="offer" id="k-o">Offer help</label>
-          </div>
+          </div><button type="button" class="btn btn-quiet btn-sm compose-close" id="composeClose">Close</button></div>
           <label class="field"><span>Your post</span><textarea class="textarea" id="postText" name="text" maxlength="1000" dir="auto" placeholder="How are you handling… ? / We tried… / Happy to share…"></textarea>
             <span class="hint">Posted under your name. Any language works; it's translated to English once, when you post.</span></label>
           <button class="btn btn-gold btn-block" type="submit">Post to the board</button>
@@ -993,7 +1063,9 @@ async function board() {
     </div>`;
   });
   if (!ok) return;
-  const root = view.firstElementChild, list = $("#posts");
+  const root = view.firstElementChild, list = $("#posts"), form = $("#compose");
+  $("#composeOpen").onclick = () => { form.classList.add("open"); $("#postText").focus(); };
+  $("#composeClose").onclick = () => form.classList.remove("open");
   $("#compose").onsubmit = async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target), btn = e.target.querySelector("[type=submit]");
@@ -1004,7 +1076,7 @@ async function board() {
       const { post } = await api("POST", "/api/board", { kind: fd.get("kind"), text });
       $("#noPosts")?.remove();
       data.posts.unshift(post); list.insertAdjacentHTML("afterbegin", postHTML(post, state.me.id));
-      e.target.reset(); toast(post.original ? `Posted, translated from ${LANGS[post.lang] || "your language"}.` : "Posted.");
+      e.target.reset(); form.classList.remove("open"); toast(post.original ? `Posted, translated from ${LANGS[post.lang] || "your language"}.` : "Posted.");
     } catch (err) { toast(err.message); }
     btn.disabled = false; btn.textContent = "Post to the board";
   };
