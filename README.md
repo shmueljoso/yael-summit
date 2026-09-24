@@ -26,7 +26,7 @@ functions/api/     אותם נתיבים בפורמט של Cloudflare Pages (ל�
 הפרויקט `yael-summit` ב-Workers & Pages מחובר לגיטהאב, ובונה את `main` עם `npx wrangler deploy` לפי `wrangler.jsonc`.
 1. Settings → Build: Build command ריק, Deploy command `npx wrangler deploy`.
 2. אחרי הפריסה: Settings → Variables and Secrets → Add → סוג **Secret**, שם **`GEMINI_API_KEY`**.
-3. אחסון הלוח (`BOARD`) נוצר אוטומטית בפריסה.
+3. אחסון הלוח (`BOARD`) הוא ה-KV `yael-board`, והמזהה שלו קבוע ב-`wrangler.jsonc`.
 4. להחלפת מודל משנים את `GEMINI_MODEL` ב-`wrangler.jsonc` (כל פריסה דורסת משתנים רגילים מהדשבורד; סודות נשמרים).
 
 ## חיסכון בקרדיטים
