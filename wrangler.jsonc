@@ -10,7 +10,7 @@
   },
   // Photos, AI answer cache and rate limits (the "yael-board" namespace).
   "kv_namespaces": [
-    { "binding": "BOARD", "id": "e092877d01184744b378d6f67b37f5b7" }
+    { "binding": "BOARD", "id": "5065275cd57948eaae6831d27d12a448" }
   ],
   // Principals, connections, messages and posts (the "yael-summit" D1 database).
   "d1_databases": [
