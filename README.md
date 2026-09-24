@@ -35,12 +35,10 @@ wrangler.jsonc       הגדרות Cloudflare
 
 | מה | איפה | הערה |
 |---|---|---|
-| `DB` (D1) | `wrangler.jsonc` | משתמשים, חיבורים, הודעות, פוסטים. **נוצר אוטומטית בפריסה.** הטבלאות נוצרות לבד בשימוש הראשון. |
+| `DB` (D1) | `wrangler.jsonc` | משתמשים, חיבורים, הודעות, פוסטים. מסד `yael-summit`, המזהה קבוע בקובץ. הטבלאות נוצרות לבד בשימוש הראשון. |
 | `BOARD` (KV) | `wrangler.jsonc` | תמונות פרופיל, מטמון AI, הגבלות קצב |
 | `GEMINI_API_KEY` | Settings → Variables and Secrets (Secret) | תרגום בלוח ו"Why meet?" |
 | `SIGNUP_CODE` | Settings → Variables and Secrets (Secret), **לא חובה** | אם מוגדר, צריך את הקוד כדי להירשם. לשים אותו בהזמנה למנהלים. |
-
-אם הפריסה נכשלת בגלל ה-D1: יוצרים ידנית ב-Storage & databases → D1 מסד בשם `yael-summit`, ומוסיפים את ה-ID שלו ל-`wrangler.jsonc` (`"database_id": "..."`).
 
 ## חיסכון בקרדיטים של Gemini
 - ההתאמה בין מנהלים היא חישוב רגיל, בלי AI.
