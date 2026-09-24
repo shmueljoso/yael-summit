@@ -1,12 +1,13 @@
-# חיבורים — אתר הכנס של קרן יעל
+# Connections — אתר הכנס של קרן יעל
 
-אב־טיפוס לאתר של הכנס השנתי למנהלות ולמנהלי בתי ספר. הנושא: **חיבורים** — כל מנהל הוא כוכב, וחיבורים קטנים יוצרים רשת.
+אב־טיפוס לאתר של הכנס השנתי למנהלות ולמנהלי בתי ספר. הנושא: **חיבורים (Connections)** — כל מנהל הוא כוכב, וחיבורים קטנים יוצרים רשת. **האתר באנגלית.**
 
 ## מה יש באתר
 - **שמיים חיים** בפתיחה: כוכבים שמתחברים לקבוצות כוכבים.
 - **מפת הכוכבים**: רשת אינטראקטיבית של המשתתפים, עם סינון לפי נושא.
 - **החיבורים שלי**: טופס קצר, ומיד מוצגים 3 מנהלים שכדאי להכיר ולמה. ההתאמה מחושבת בדפדפן, בלי AI ובלי עלות.
 - **ניסוח אישי ב-AI** (Gemini): כפתור אחד שכותב לכל חיבור הסבר ושאלת פתיחה.
+- **לוח ההודעות (The board)**: מנהלים משאירים שאלה, רעיון או הצעת עזרה בכל שפה. הפוסט מתורגם לאנגלית פעם אחת כשמפרסמים, ועולה ללוח. תמיד אפשר ללחוץ ולראות את המקור.
 - רעיונות לחוויה ביום הכנס ואחריו.
 
 כל המשתתפים באתר הם **נתוני דוגמה** (`public/data.js`).
@@ -14,16 +15,17 @@
 ## מבנה
 ```
 public/            האתר עצמו (HTML/CSS/JS, בלי שלב בנייה)
-functions/api/     הפונקציה של Cloudflare שמדברת עם Gemini
+functions/api/     הנתיבים של Cloudflare Pages: /api/connect, /api/board
+src/api/           הקוד של הנתיבים: connect.js (ניסוח חיבורים) · board.js (לוח ההודעות)
+src/lib/gemini.js  קריאה משותפת ל-Gemini
 ```
 
-## חיבור ל-Cloudflare Pages
-1. Cloudflare → Workers & Pages → Create → Pages → Connect to Git → לבחור את הריפו.
-2. Framework preset: **None**. Build command: ריק. Build output directory: **`public`**.
-3. Settings → Variables and Secrets → להוסיף:
-   - `GEMINI_API_KEY` — מסוג **Secret**.
-   - `GEMINI_MODEL` — לא חובה. ברירת המחדל היא `gemini-3.5-flash-lite`.
-4. לפרוס מחדש (Retry deployment) כדי שהמשתנים ייכנסו לתוקף.
+## פריסה ב-Cloudflare Pages
+1. Workers & Pages → Create → Pages → Connect to Git → לבחור את `yael-summit`.
+2. Production branch: `main`. Framework preset: **None**. Build command: ריק. Build output directory: **`public`**.
+3. Settings → Variables and Secrets → Add → סוג **Secret**, שם **`GEMINI_API_KEY`**. (לא חובה: משתנה רגיל `GEMINI_MODEL`.)
+4. ללוח ההודעות: Workers & Pages → KV → Create namespace (למשל `yael-board`). אחר כך בפרויקט: Settings → Bindings → Add → KV namespace, שם המשתנה **`BOARD`**.
+5. Deployments → Retry deployment, כדי שההגדרות ייכנסו לתוקף.
 
 ## חיסכון בקרדיטים
 - ההתאמה בין מנהלים לא משתמשת ב-AI בכלל.
@@ -32,6 +34,8 @@ functions/api/     הפונקציה של Cloudflare שמדברת עם Gemini
 - תשובה קצרה (`maxOutputTokens: 450`), פלט JSON, ו-thinking מינימלי.
 - בקשות זהות נשמרות ב-cache של Cloudflare ל-30 יום, וגם בדפדפן.
 - בקשות מאתרים אחרים נחסמות.
+- **לוח ההודעות:** התרגום קורה פעם אחת בפרסום, לא בכל צפייה. פוסט שנכתב באנגלית לא עובר דרך ה-AI בכלל. קריאה אחת מתרגמת גם את הטקסט, גם את השם וגם את בית הספר, ובאותה קריאה מסננת ספאם ופרטים מזהים על תלמידים. מוגבל ל-3 פוסטים בדקה לכל IP.
+- שימו לב: פוסטים באנגלית לא נבדקים ב-AI, ולכן גם לא מסוננים.
 - כל תשובה מחזירה כותרת `x-ai-tokens` למעקב אחר הצריכה.
 
 מומלץ להוסיף גם כלל Rate Limiting ב-Cloudflare (Security → WAF) על `/api/connect`, למשל 10 בקשות לדקה לכל IP.

@@ -1,5 +1,5 @@
-/* חיבורים — קרן יעל
-   שפה אחת עם הלוגו: כחולים שקופים, לבן אוורירי, פינות רכות, בלי קווי מסגרת. */
+/* Connections — Yael Foundation
+   One language with the logo: translucent blues, airy white, soft corners, no outlines. */
 
 :root {
   color-scheme: light;
@@ -27,7 +27,7 @@
 
   --t-xs: 0.8rem; --t-sm: 0.92rem; --t-md: 1.06rem; --t-lg: 1.3rem;
   --t-xl: clamp(1.8rem, 1.2rem + 2.2vw, 2.7rem);
-  --t-hero: clamp(3.6rem, 1.6rem + 9vw, 8.5rem);
+  --t-hero: clamp(2.7rem, 1rem + 5.2vw, 5.6rem);
 
   --r-sm: 14px;
   --r: 24px;
@@ -142,6 +142,15 @@ p { margin: 0; }
   background-clip: text;
   color: transparent;
   padding-block: 0.06em;
+}
+.display-he {
+  display: block;
+  font-size: 0.34em;
+  font-weight: 500;
+  letter-spacing: 0;
+  margin-top: 0.35em;
+  color: var(--sky);
+  -webkit-text-fill-color: var(--sky);
 }
 .lede { font-size: clamp(1.2rem, 1rem + .9vw, 1.6rem); color: var(--ink-2); max-width: 28ch; line-height: 1.45; }
 .hero-actions { display: flex; flex-wrap: wrap; gap: var(--s-3); margin-top: var(--s-2); }
@@ -337,6 +346,39 @@ input:focus, select:focus, textarea:focus { outline: none; background: #fff; box
 }
 .empty { color: var(--muted); padding: var(--s-5); background: var(--surface); border-radius: var(--r); }
 
+/* ---------- board ---------- */
+.board-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: var(--s-6); align-items: start; }
+@media (max-width: 920px) { .board-grid { grid-template-columns: 1fr; } }
+.board-form { gap: var(--s-4); }
+.kind { display: flex; gap: 4px; padding: 4px; background: #F2F6FC; border-radius: 999px; }
+.kind label {
+  position: relative; flex: 1; text-align: center;
+  font: 500 var(--t-sm)/1 var(--f-head); color: var(--ink-2);
+  padding: 0.7rem 0.5rem; border-radius: 999px; cursor: pointer;
+  transition: background .2s, color .2s, box-shadow .2s;
+}
+.kind input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.kind label:has(input:checked) { background: var(--surface); color: var(--blue); box-shadow: var(--shadow-sm); }
+.kind label:has(input:focus-visible) { box-shadow: 0 0 0 3px rgba(47, 123, 245, .35); }
+.counter { font-size: var(--t-xs); color: var(--muted); text-align: end; font-variant-numeric: tabular-nums; }
+.posts { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-3); max-height: 720px; overflow-y: auto; padding: 4px; margin: -4px; }
+.post {
+  background: var(--surface); border-radius: var(--r); padding: var(--s-5);
+  box-shadow: var(--shadow-sm); display: grid; gap: var(--s-3);
+  animation: rise .6s cubic-bezier(.2, .7, .2, 1) both;
+}
+.post-top { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.post-kind { font: 500 var(--t-xs)/1 var(--f-head); padding: 0.4rem 0.75rem; border-radius: 999px; background: var(--soft); color: var(--blue); }
+.post-kind[data-kind="idea"] { background: #F3EEFE; color: #6A4BD8; }
+.post-kind[data-kind="offer"] { background: #E3F7F4; color: #0E8C7F; }
+.post-sample { font-size: var(--t-xs); color: var(--muted); margin-inline-start: auto; }
+.post-text { font-size: 1.08rem; color: var(--ink); }
+.post-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); flex-wrap: wrap; font-size: var(--t-sm); color: var(--muted); }
+.post-meta b { color: var(--ink); font-weight: 600; }
+.post-lang { border: 0; background: none; font: 500 var(--t-xs)/1 var(--f-head); color: var(--blue); cursor: pointer; padding: 0.35rem 0; }
+.post-lang:hover { text-decoration: underline; }
+.post-original { font-size: var(--t-sm); color: var(--ink-2); background: #F2F6FC; border-radius: var(--r-sm); padding: var(--s-3) var(--s-4); }
+
 /* ---------- event ---------- */
 .features { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s-4); }
 .feature {
@@ -394,6 +436,6 @@ input:focus, select:focus, textarea:focus { outline: none; background: #fff; box
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .match, .hero-star { animation: none; }
+  .match, .post, .hero-star { animation: none; }
   .btn, .chip { transition: none; }
 }
