@@ -1,6 +1,7 @@
 /** Profiles: your own (view/edit/photo), the directory, and other principals' pages. */
 import { json, error, clip, clipText, readJson } from "../lib/http.js";
 import { db, card, full, currentUser, requireUser, connectionBetween, TOPICS, LEVELS, LINK_KINDS } from "../lib/db.js";
+import { locate } from "../lib/places.js";
 
 const topicList = (arr) => (Array.isArray(arr) ? [...new Set(arr.filter((t) => t in TOPICS))].slice(0, 5) : []);
 
@@ -38,6 +39,7 @@ export async function updateMe({ request, env }) {
     topics: JSON.stringify(topicList(b.topics)), gives: JSON.stringify(topicList(b.gives)), seeks: JSON.stringify(topicList(b.seeks)),
     links: JSON.stringify(links), phone: clip(b.phone, 40),
   };
+  [vals.lat, vals.lng] = locate(vals.city, vals.country) || [null, null];
   const d = await db(env);
   const cols = Object.keys(vals);
   await d.prepare(`UPDATE users SET ${cols.map((c) => `${c} = ?`).join(", ")} WHERE id = ?`).bind(...cols.map((c) => vals[c]), u.id).run();

@@ -5,6 +5,7 @@
 import { json, error, clip, readJson, sha256, limited } from "../lib/http.js";
 import { db, card, requireUser, connectionBetween, pairOf, TOPICS } from "../lib/db.js";
 import { gemini, modelOf } from "../lib/gemini.js";
+import { locate } from "../lib/places.js";
 
 const parse = (s) => { try { return JSON.parse(s); } catch { return []; } };
 const inter = (a, b) => a.filter((x) => b.includes(x));
@@ -115,12 +116,15 @@ export async function map({ request, env }) {
   const u = await requireUser(env, request);
   const d = await db(env);
   const [{ results: users }, { results: edges }] = await Promise.all([
-    d.prepare("SELECT id, full_name, school, country, topics, avatar FROM users").all(),
+    d.prepare("SELECT id, full_name, school, city, country, topics, avatar, lat, lng, is_demo FROM users").all(),
     d.prepare("SELECT a, b FROM connections WHERE status = 'accepted'").all(),
   ]);
   return json({
     me: u.id,
-    nodes: users.map((x) => ({ id: x.id, name: x.full_name, school: x.school, country: x.country, topics: parse(x.topics), avatar: x.avatar ? `/api/avatar/${x.id}?v=${x.avatar}` : null })),
+    nodes: users.map((x) => {
+      const [lat, lng] = x.lat != null ? [x.lat, x.lng] : locate(x.city, x.country) || [null, null];
+      return { id: x.id, name: x.full_name, school: x.school, city: x.city, country: x.country, topics: parse(x.topics), lat, lng, sample: !!x.is_demo, avatar: x.avatar ? `/api/avatar/${x.id}?v=${x.avatar}` : null };
+    }),
     edges: edges.map((e) => [e.a, e.b]),
   });
 }
@@ -153,4 +157,15 @@ export async function intro({ request, env, params }) {
   if (!out.why) return error(502, "ai_failed", "The AI didn't answer. Try again.");
   await env.BOARD?.put(key, JSON.stringify(out), { expirationTtl: 60 * 60 * 24 * 60 });
   return json(out, 200, { "x-cache": "MISS", ...(usage != null ? { "x-ai-tokens": String(usage) } : {}) });
+}
+
+/** GET /api/stats — public numbers for the landing page. */
+export async function stats({ env }) {
+  const d = await db(env);
+  const [u, c, k] = await Promise.all([
+    d.prepare("SELECT COUNT(*) n FROM users").first(),
+    d.prepare("SELECT COUNT(DISTINCT LOWER(TRIM(country))) n FROM users WHERE country != ''").first(),
+    d.prepare("SELECT COUNT(*) n FROM connections WHERE status = 'accepted'").first(),
+  ]);
+  return json({ principals: u?.n || 0, countries: c?.n || 0, connections: k?.n || 0 }, 200, { "cache-control": "public, max-age=60" });
 }

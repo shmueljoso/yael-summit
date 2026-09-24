@@ -356,3 +356,20 @@ button.chip { border: 0; cursor: pointer; font: inherit; font-size: .8rem; }
 /* ---------- connect-note dialog ---------- */
 .note-dialog { border: 0; color: inherit; width: calc(100% - 32px); max-width: 460px; }
 .note-dialog::backdrop { background: rgba(3, 6, 20, .72); backdrop-filter: blur(4px); }
+
+/* ---------- sample tag, landing stats, world map ---------- */
+.sample-tag { display: inline-block; vertical-align: 2px; font: 600 .6rem/1 var(--f-label); letter-spacing: .12em; text-transform: uppercase; padding: .28rem .5rem; border-radius: 999px; background: rgba(169, 179, 214, .12); color: var(--mist); }
+.land-stats { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.land-stats div { background: rgba(11, 23, 64, .7); border-radius: 16px; padding: 10px 16px; min-width: 104px; }
+.land-stats b { display: block; font-family: var(--f-display); font-size: 1.9rem; line-height: 1; color: var(--gold-2); font-variant-numeric: tabular-nums; }
+.land-stats span { font-size: .78rem; color: var(--mist); }
+.map-wrap.world { background: radial-gradient(ellipse at 50% 120%, rgba(46, 102, 245, .28), transparent 60%), #030819; }
+.map-wrap.world canvas { height: auto; min-height: 220px; }
+/* keep the tag small wherever it sits (post headers and card name blocks style their spans) */
+.view span.sample-tag, .map-tip span.sample-tag { font-size: .6rem; color: var(--mist); justify-self: start; width: fit-content; white-space: nowrap; }
+@media (max-width: 640px) {
+  #ptopics { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; scrollbar-width: none; }
+  .map-legend { display: none; }
+}
+.map-wrap.globe { background: radial-gradient(ellipse at 50% 50%, rgba(46, 102, 245, .18), transparent 65%), #030819; }
+.map-wrap.globe canvas { height: auto; min-height: 280px; }
