@@ -91,6 +91,7 @@ const ROUTES = [
   [/^people$/, () => auth(() => people("list"))],
   [/^map$/, () => auth(() => people("map"))],
   [/^world$/, () => auth(() => people("world"))],
+  [/^globe$/, () => auth(() => people("globe"))],
   [/^u\/([\w-]+)$/, (id) => auth(() => profile(id))],
   [/^me\/edit$/, () => auth(() => editProfile())],
   [/^messages$/, () => auth(() => messages(null))],
@@ -141,7 +142,7 @@ const NAV = [
 function current(href) {
   const h = location.hash || "#/";
   if (href === "#/") return h === "#/" || h === "#";
-  if (href === "#/people") return h.startsWith("#/people") || h.startsWith("#/map") || h.startsWith("#/world") || (h.startsWith("#/u/") && h !== `#/u/${state.me?.id}`);
+  if (href === "#/people") return h.startsWith("#/people") || h.startsWith("#/map") || h.startsWith("#/world") || h.startsWith("#/globe") || (h.startsWith("#/u/") && h !== `#/u/${state.me?.id}`);
   return h.startsWith(href);
 }
 
@@ -438,6 +439,7 @@ function people(mode) {
         <label><input type="radio" name="pv" value="list" id="pv-list" ${mode === "list" ? "checked" : ""}>List</label>
         <label><input type="radio" name="pv" value="map" id="pv-map" ${mode === "map" ? "checked" : ""}>Constellation</label>
         <label><input type="radio" name="pv" value="world" id="pv-world" ${mode === "world" ? "checked" : ""}>World</label>
+        <label><input type="radio" name="pv" value="globe" id="pv-globe" ${mode === "globe" ? "checked" : ""}>Globe</label>
       </div></div>
     <div class="toolbar">
       ${mode === "list" ? `<input class="input" id="pq" type="search" placeholder="Search by name, school or country" aria-label="Search">` : ""}
@@ -447,13 +449,14 @@ function people(mode) {
     </div>
     <div id="pbody">${loadingHTML}</div>
   </div>`;
-  $$("[name=pv]").forEach((r) => (r.onchange = () => go({ map: "#/map", world: "#/world" }[r.value] || "#/people")));
+  $$("[name=pv]").forEach((r) => (r.onchange = () => go({ map: "#/map", world: "#/world", globe: "#/globe" }[r.value] || "#/people")));
   const pickTopic = (e, then) => {
     const c = e.target.closest("[data-topic]"); if (!c) return;
     topic = c.dataset.topic; $$("#ptopics .chip").forEach((x) => (x.className = `chip ${x === c ? "gold" : "plain"}`)); then(topic);
   };
 
   if (mode === "map") { constellationMap((setFilter) => ($("#ptopics").onclick = (e) => pickTopic(e, setFilter))); return; }
+  if (mode === "globe") { globeMap((setFilter) => ($("#ptopics").onclick = (e) => pickTopic(e, setFilter))); return; }
   if (mode === "world") { worldMap((setFilter) => ($("#ptopics").onclick = (e) => pickTopic(e, setFilter))); return; }
 
   const token = routeToken, body = $("#pbody");
@@ -621,6 +624,126 @@ async function worldMap(onFilterReady) {
   };
   cv.onpointermove = (e) => { if (e.pointerType !== "mouse") return; const n = pick(e); if (n !== hover) show(n); };
   cv.onclick = (e) => { const n = pick(e); if (n && n === hover && e.pointerType === "mouse") go(`#/u/${n.id}`); else show(n); };
+}
+
+// Globe view: the same network on an Earth you can spin. Drag to rotate; it turns slowly on its own.
+async function globeMap(onFilterReady) {
+  const token = routeToken, body = $("#pbody");
+  let data;
+  try {
+    [data, landCache] = await Promise.all([api("GET", "/api/map"), landCache || fetch("assets/land.json").then((r) => r.json())]);
+  } catch (e) { body.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  if (token !== routeToken) return;
+  const placed = data.nodes.filter((n) => n.lat != null && n.lng != null);
+  body.innerHTML = `<div class="map-wrap globe"><canvas id="globeCv" role="img" aria-label="Globe of principals' schools and their connections. Drag to rotate."></canvas>
+    <div class="map-legend"><span><i style="background:var(--gold)"></i>your connections</span><span><i style="background:var(--sky)"></i>other connections</span><span>Drag to spin the globe</span></div>
+    <div class="map-tip" id="mapTip" hidden></div></div>`;
+  const cv = $("#globeCv"), tip = $("#mapTip");
+  let filter = ""; onFilterReady((f) => (filter = f));
+  const mine = new Set(data.edges.filter((e) => e.includes(data.me)).flat());
+  const RAD = Math.PI / 180;
+
+  // Land points on the sphere: sample a lat/lng grid against a land mask drawn once.
+  const mw = 720, mh = 360, mask = document.createElement("canvas"); mask.width = mw; mask.height = mh;
+  const mc = mask.getContext("2d"); mc.fillStyle = "#fff";
+  for (const ring of landCache) { mc.beginPath(); for (let i = 0; i < ring.length; i += 2) { const x = (ring[i] + 180) / 360 * mw, y = (90 - ring[i + 1]) / 180 * mh; i ? mc.lineTo(x, y) : mc.moveTo(x, y); } mc.closePath(); mc.fill(); }
+  const md = mc.getImageData(0, 0, mw, mh).data, land = [];
+  for (let lat = -56; lat <= 82; lat += 1.6) { // Antarctica left out: no schools there, and its outline wraps badly
+    const stepLng = 1.6 / Math.max(.2, Math.cos(lat * RAD));
+    for (let lng = -180; lng < 180; lng += stepLng) {
+      const x = Math.floor((lng + 180) / 360 * mw), y = Math.floor((90 - lat) / 180 * mh);
+      if (md[(y * mw + x) * 4 + 3] > 0) land.push([lat * RAD, lng * RAD]);
+    }
+  }
+  const nodes = placed.map((n, i) => ({ ...n, la: n.lat * RAD, lo: n.lng * RAD, t: (i * 1.7) % 6 }));
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const me = byId.get(data.me);
+
+  // Start facing the viewer's own school (or the Atlantic).
+  let rotLng = me ? -me.lo : 20 * RAD, rotLat = me ? -Math.max(-.6, Math.min(.6, me.la)) * .6 : -20 * RAD;
+  let g, R, cx, cy;
+  const size = () => { cv.style.height = `${Math.min(620, Math.round(cv.getBoundingClientRect().width * .72))}px`; g = fit(cv); R = Math.min(g.w, g.h) * .44; cx = g.w / 2; cy = g.h / 2; };
+  size(); addEventListener("resize", size); onLeave(() => removeEventListener("resize", size));
+
+  // Orthographic projection with rotation; returns [x, y, depth] (depth > 0 means facing us).
+  const cosB = () => Math.cos(rotLat), sinB = () => Math.sin(rotLat);
+  function project(la, lo, lift = 1) {
+    const l = lo + rotLng, x0 = Math.cos(la) * Math.sin(l), y0 = Math.sin(la), z0 = Math.cos(la) * Math.cos(l);
+    const y1 = y0 * cosB() - z0 * sinB(), z1 = y0 * sinB() + z0 * cosB();
+    return [cx + x0 * R * lift, cy - y1 * R * lift, z1];
+  }
+  const toVec = (la, lo) => [Math.cos(la) * Math.cos(lo), Math.cos(la) * Math.sin(lo), Math.sin(la)];
+  function arcPoints(A, B, steps = 28) {
+    const a = toVec(A.la, A.lo), b = toVec(B.la, B.lo), dot = Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2])), om = Math.acos(dot) || 1e-6;
+    const out = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps, s1 = Math.sin((1 - t) * om) / Math.sin(om), s2 = Math.sin(t * om) / Math.sin(om);
+      const v = [a[0] * s1 + b[0] * s2, a[1] * s1 + b[1] * s2, a[2] * s1 + b[2] * s2];
+      out.push([Math.asin(Math.max(-1, Math.min(1, v[2]))), Math.atan2(v[1], v[0]), 1 + .18 * Math.sin(Math.PI * t) * Math.min(1, om)]);
+    }
+    return out;
+  }
+  const arcs = data.edges.map(([a, b]) => { const A = byId.get(a), B = byId.get(b); return A && B ? { a, b, A, B, pts: arcPoints(A, B) } : null; }).filter(Boolean);
+
+  let dragging = false, last = null, idleAt = 0, hover = null, shown = [];
+  animate((t) => {
+    const { c, w, h } = g, k = t / 1000;
+    if (!dragging && !reduceMotion && t - idleAt > 1500) rotLng += .0012;
+    c.clearRect(0, 0, w, h);
+    // atmosphere glow and the ocean disc
+    const glow = c.createRadialGradient(cx, cy, R * .9, cx, cy, R * 1.25); glow.addColorStop(0, "rgba(46,102,245,.35)"); glow.addColorStop(1, "rgba(46,102,245,0)");
+    c.fillStyle = glow; c.beginPath(); c.arc(cx, cy, R * 1.25, 0, 7); c.fill();
+    const sea = c.createRadialGradient(cx - R * .35, cy - R * .4, R * .1, cx, cy, R); sea.addColorStop(0, "#0E1E5C"); sea.addColorStop(1, "#050B24");
+    c.fillStyle = sea; c.beginPath(); c.arc(cx, cy, R, 0, 7); c.fill();
+    // continents as dots, dimmer toward the edge
+    for (const [la, lo] of land) { const [x, y, z] = project(la, lo); if (z > 0) { c.fillStyle = `rgba(141,184,255,${.12 + .3 * z})`; c.fillRect(x - .9, y - .9, 1.8, 1.8); } }
+    const on = (n) => !filter || n.topics.includes(filter);
+    // arcs: draw only the segments on the visible side
+    arcs.forEach((a, i) => {
+      const isMine = a.a === data.me || a.b === data.me;
+      if (!isMine && !(on(a.A) && on(a.B))) return;
+      c.strokeStyle = isMine ? "rgba(241,213,145,.85)" : "rgba(141,184,255,.4)"; c.lineWidth = isMine ? 1.6 : 1;
+      c.beginPath(); let pen = false;
+      for (const [la, lo, lift] of a.pts) { const [x, y, z] = project(la, lo, lift); if (z > -.05) { pen ? c.lineTo(x, y) : c.moveTo(x, y); pen = true; } else pen = false; }
+      c.stroke();
+      if (!reduceMotion) {
+        const idx = Math.floor(((k * .15 + i * .137) % 1) * (a.pts.length - 1)), [la, lo, lift] = a.pts[idx], [x, y, z] = project(la, lo, lift);
+        if (z > 0) { c.fillStyle = isMine ? "#F1D591" : "rgba(200,222,255,.9)"; c.beginPath(); c.arc(x, y, 1.7, 0, 7); c.fill(); }
+      }
+    });
+    // schools
+    shown = [];
+    for (const n of nodes) {
+      const [x, y, z] = project(n.la, n.lo); if (z <= 0) continue;
+      const isMe = n.id === data.me, tw = reduceMotion ? 1 : .75 + .25 * Math.sin(k * 1.4 + n.t);
+      const rad = (isMe ? 6 : n === hover ? 5.5 : mine.has(n.id) ? 4 : 3.2) * (.6 + .4 * z);
+      c.globalAlpha = (on(n) || isMe ? tw : .15) * (.5 + .5 * z);
+      c.fillStyle = isMe || mine.has(n.id) ? "#F1D591" : "#DCE8FF"; c.shadowColor = c.fillStyle; c.shadowBlur = isMe || n === hover ? 16 : 7;
+      c.beginPath(); c.arc(x, y, rad, 0, 7); c.fill(); c.shadowBlur = 0; c.globalAlpha = 1;
+      if (isMe || n === hover) { c.fillStyle = "#F2F0EA"; c.font = "500 12px DM Sans, sans-serif"; c.textAlign = "center"; c.fillText(isMe ? "You" : n.name, x, y - rad - 7); }
+      shown.push([n, x, y]);
+    }
+  });
+
+  const pos = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  const pick = (e) => { const [x, y] = pos(e); let best = null, bd = 14; for (const [n, nx, ny] of shown) { const d = Math.hypot(nx - x, ny - y); if (d < bd) { bd = d; best = n; } } return best; };
+  const show = (n) => {
+    hover = n; tip.hidden = !n;
+    if (n) tip.innerHTML = `${avatar({ id: n.id, avatar: n.avatar, full_name: n.name }, "sm")}<div><b>${esc(n.name)}</b> ${sampleTag(n)}<div class="tiny">${esc([n.school, [n.city, n.country].filter(Boolean).join(", ")].filter(Boolean).join(" · "))}</div></div><a class="btn btn-soft btn-sm" href="#/u/${esc(n.id)}">View</a>`;
+  };
+  let moved = 0;
+  cv.onpointerdown = (e) => { dragging = true; moved = 0; last = pos(e); cv.setPointerCapture(e.pointerId); };
+  cv.onpointermove = (e) => {
+    if (dragging) {
+      const [x, y] = pos(e), dx = x - last[0], dy = y - last[1]; last = [x, y]; moved += Math.abs(dx) + Math.abs(dy);
+      rotLng += dx / R; rotLat = Math.max(-1.2, Math.min(1.2, rotLat - dy / R)); idleAt = performance.now();
+    } else if (e.pointerType === "mouse") { const n = pick(e); if (n !== hover) show(n); }
+  };
+  cv.onpointerup = (e) => {
+    dragging = false; idleAt = performance.now();
+    if (moved < 6) { const n = pick(e); if (n && n === hover && e.pointerType === "mouse") go(`#/u/${n.id}`); else show(n); }
+  };
+  cv.style.cursor = "grab"; cv.style.touchAction = "none";
 }
 
 // =============================================================
