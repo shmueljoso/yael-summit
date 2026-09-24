@@ -1,100 +1,61 @@
 /**
- * /api/board — the principals' message board.
- *   GET  → latest posts (English, with the original text when translated)
- *   POST → { kind, name, school, text } in any language; saved in English
- *
- * Translation happens ONCE, when a post is saved — never when people read the board.
- * Posts already in English (Latin script) skip the AI completely.
- * One Gemini call translates the text, name and school together and flags spam/abuse.
- *
- * Needs a KV namespace bound as BOARD (Pages → Settings → Bindings → KV namespace).
+ * The board: public posts by signed-in principals, under their full name.
+ * Posts in any language are translated to English ONCE, when saved — never when read.
+ * Posts already in Latin script skip the AI entirely.
  */
-import { json, clip, sameOrigin, gemini } from "../lib/gemini.js";
+import { json, error, clip, clipText, readJson, randomId, limited } from "../lib/http.js";
+import { db, card, requireUser } from "../lib/db.js";
+import { gemini } from "../lib/gemini.js";
 
-const KEY = "posts";
-const KEEP = 150;           // posts kept on the board
-const PER_MINUTE = 3;       // posts per IP per minute
 const KINDS = new Set(["question", "idea", "offer"]);
-
-// Anything outside Latin script (Hebrew, Arabic, Cyrillic, Amharic…) needs translating.
 const needsTranslation = (s) => /[^\u0000-ɏḀ-ỿ -⁯₠-⃏\s]/.test(s);
 
 const SYSTEM = [
-  "You translate posts written by Israeli school principals for an English-language conference board.",
-  "Translate text into natural, faithful English — keep the tone, do not add or summarize.",
-  "Transliterate the person's name into English letters and translate the school name.",
-  "lang is the ISO 639-1 code of the original text.",
-  "ok is false only for spam, abuse, or identifying details about a specific student.",
-  'Return JSON only: {"lang":string,"text":string,"name":string,"school":string,"ok":boolean}',
+  "Translate a post by a Jewish school principal into natural, faithful English for an international conference board.",
+  "Keep the tone and meaning; do not add, summarize or censor. Keep Hebrew terms that English readers in Jewish education use (e.g. Shabbat, Kabbalat Shabbat).",
+  "lang is the ISO 639-1 code of the original.",
+  'Return JSON only: {"lang":string,"text":string}',
 ].join(" ");
 
-async function readPosts(env) {
-  return (await env.BOARD.get(KEY, "json")) || [];
+/** GET /api/board — latest posts with their authors. */
+export async function listPosts({ request, env }) {
+  const u = await requireUser(env, request);
+  const d = await db(env);
+  const { results } = await d.prepare(
+    "SELECT p.id AS post_id, p.kind, p.text, p.original, p.lang, p.created_at AS posted_at, u.* FROM posts p JOIN users u ON u.id = p.user_id ORDER BY p.created_at DESC LIMIT 100"
+  ).all();
+  return json({
+    me: u.id,
+    posts: results.map((r) => ({ id: r.post_id, kind: r.kind, text: r.text, original: r.original, lang: r.lang, at: r.posted_at, author: card(r) })),
+  });
 }
 
-export async function onRequestGet({ env }) {
-  if (!env.BOARD) return json({ error: "board_not_configured" }, 503);
-  const posts = await readPosts(env);
-  return json({ posts: posts.slice(0, 60) }, 200, { "cache-control": "public, max-age=15" });
-}
+/** POST /api/board { kind, text } */
+export async function createPost({ request, env }) {
+  const u = await requireUser(env, request);
+  if (await limited(env, `post:${u.id}`, 3)) return error(429, "slow_down", "You've posted a few times in a row. Try again in a minute.");
+  const b = await readJson(request);
+  const text = clipText(b.text, 1000);
+  if (text.length < 3) return error(400, "empty", "Write a few words first.");
+  const post = { id: randomId(8), kind: KINDS.has(b.kind) ? b.kind : "question", text, original: null, lang: "en" };
 
-export async function onRequestPost({ request, env }) {
-  if (!sameOrigin(request)) return json({ error: "forbidden" }, 403);
-  if (!env.BOARD) return json({ error: "board_not_configured" }, 503);
-
-  const raw = await request.text();
-  if (raw.length > 3000) return json({ error: "too_large" }, 413);
-  let body;
-  try { body = JSON.parse(raw); } catch { return json({ error: "bad_json" }, 400); }
-
-  const post = {
-    kind: KINDS.has(body?.kind) ? body.kind : "question",
-    name: clip(body?.name, 40),
-    school: clip(body?.school, 60),
-    text: clip(body?.text, 500),
-  };
-  if (post.text.length < 3) return json({ error: "empty" }, 400);
-
-  // Light rate limit per IP (KV's minimum TTL is 60s).
-  const ip = request.headers.get("cf-connecting-ip") || "unknown";
-  const rlKey = `rl:${ip}`;
-  const used = Number(await env.BOARD.get(rlKey)) || 0;
-  if (used >= PER_MINUTE) return json({ error: "slow_down" }, 429);
-  await env.BOARD.put(rlKey, String(used + 1), { expirationTtl: 60 });
-
-  let saved = { ...post, lang: "en" };
-  if (needsTranslation(post.text)) {
-    if (!env.GEMINI_API_KEY) return json({ error: "ai_not_configured" }, 503);
-    try {
-      const { data } = await gemini(env, {
-        system: SYSTEM,
-        text: `name: ${post.name || "-"}\nschool: ${post.school || "-"}\ntext: ${post.text}`,
-        maxOutputTokens: 400,
-        temperature: 0.2,
-      });
-      if (data?.ok === false) return json({ error: "rejected" }, 422);
-      saved = {
-        ...post,
-        lang: clip(data?.lang, 5).toLowerCase() || "und",
-        text: clip(data?.text, 900) || post.text,
-        name: clip(data?.name, 60) || post.name,
-        school: clip(data?.school, 80) || post.school,
-        original: post.text,
-      };
-    } catch {
-      return json({ error: "ai_failed" }, 502);
-    }
+  if (needsTranslation(text)) {
+    const { data } = await gemini(env, { system: SYSTEM, text, maxOutputTokens: 600, temperature: 0.2 });
+    post.lang = clip(data?.lang, 5).toLowerCase() || "und";
+    post.text = clipText(data?.text, 1500) || text;
+    post.original = text;
   }
-
-  saved.id = crypto.randomUUID();
-  saved.ts = Date.now();
-
-  // Single-key list: simple and fine at conference scale.
-  const posts = await readPosts(env);
-  posts.unshift(saved);
-  await env.BOARD.put(KEY, JSON.stringify(posts.slice(0, KEEP)));
-
-  return json({ post: saved }, 201);
+  const d = await db(env);
+  const now = Date.now();
+  await d.prepare("INSERT INTO posts (id, user_id, kind, text, original, lang, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(post.id, u.id, post.kind, post.text, post.original, post.lang, now).run();
+  return json({ post: { ...post, at: now, author: card(u) } }, 201);
 }
 
-export const onRequest = () => json({ error: "method_not_allowed" }, 405, { allow: "GET, POST" });
+/** DELETE /api/board/:id — authors can remove their own posts. */
+export async function deletePost({ request, env, params }) {
+  const u = await requireUser(env, request);
+  const d = await db(env);
+  await d.prepare("DELETE FROM posts WHERE id = ? AND user_id = ?").bind(params.id, u.id).run();
+  return json({ ok: true });
+}

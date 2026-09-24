@@ -3,279 +3,31 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Connections · Yael Foundation</title>
-<meta name="description" content="The Yael Foundation annual summit for school principals — small connections that grow into a network.">
+<title>Yael Summit · Constellation</title>
+<meta name="description" content="The Yael Foundation summit for Jewish school leaders around the world. Find the principals worth meeting, connect and talk — before, during and after the summit.">
+<meta name="theme-color" content="#060D26">
+<link rel="icon" type="image/jpeg" href="assets/summit-mark.jpg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&family=Assistant:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@500;600&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap">
 <link rel="stylesheet" href="styles.css">
-<link rel="icon" type="image/png" href="assets/yael-star.png">
 </head>
 <body>
+  <header class="topbar" id="topbar">
+    <a class="brand" href="#/" aria-label="Yael Summit home">
+      <img src="assets/summit-mark.jpg" alt="" class="brand-mark">
+      <span class="brand-text"><b>Yael</b><small>Summit</small></span>
+    </a>
+    <nav class="nav" id="nav" aria-label="Main"></nav>
+    <div class="nav-end" id="navEnd"></div>
+  </header>
 
-<header class="topbar" id="top">
-  <a class="brand" href="#top" aria-label="Connections — back to top">
-    <img class="brand-mark" src="assets/yael-star.png" alt="">
-    <span class="brand-name">Yael Foundation</span>
-  </a>
-  <nav class="nav" aria-label="Main">
-    <a href="#idea">The idea</a>
-    <a href="#map">Star map</a>
-    <a href="#match">My connections</a>
-    <a href="#board">The board</a>
-    <a href="#event">At the summit</a>
-  </nav>
-  <a class="btn btn-primary btn-sm" href="#match">Register</a>
-</header>
+  <main id="view" class="view" tabindex="-1"></main>
 
-<main>
+  <nav class="tabbar" id="tabbar" aria-label="Main" hidden></nav>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-  <!-- HERO -->
-  <section class="hero wrap">
-    <div class="hero-panel">
-      <canvas id="sky" class="sky" aria-hidden="true"></canvas>
-      <div class="hero-inner">
-        <p class="eyebrow">Annual Summit for School Principals</p>
-        <h1 class="display">Connections<span class="display-he" lang="he">חיבורים</span></h1>
-        <p class="lede">Every principal is a star. Connect them, and a network begins to shine.</p>
-        <div class="hero-actions">
-          <a class="btn btn-primary" href="#match">Find your connections</a>
-          <a class="btn btn-soft" href="#idea">How it works</a>
-        </div>
-        <dl class="hero-facts">
-          <div><dt>Date</dt><dd>Announced soon</dd></div>
-          <div><dt>Who</dt><dd>Principals from across Israel</dd></div>
-          <div><dt>Connections</dt><dd>Start today</dd></div>
-        </dl>
-      </div>
-      <div class="hero-art" aria-hidden="true">
-        <img class="hero-star" src="assets/yael-star.png" alt="">
-      </div>
-    </div>
-  </section>
-
-  <!-- IDEA -->
-  <section class="section wrap" id="idea">
-    <div class="section-head">
-      <p class="eyebrow">The idea</p>
-      <h2>From a single star to a whole network</h2>
-      <p class="section-sub">Running a school can be lonely. This year the summit doesn't end when the day does: it connects principals by the challenges they face and the strengths they bring — from registration onward.</p>
-    </div>
-    <ol class="journey">
-      <li>
-        <span class="journey-when">Before the summit</span>
-        <h3>Everyone lights a star</h3>
-        <p>At registration, each principal shares what they're working on, what they're good at and what they want to learn. We suggest three first connections — people worth meeting before you arrive.</p>
-      </li>
-      <li>
-        <span class="journey-when">At the summit</span>
-        <h3>The stars meet</h3>
-        <p>Two participants scan each other's badges and a new line appears on the map. A big screen shows the network growing live, and discussion circles are formed around shared challenges.</p>
-      </li>
-      <li>
-        <span class="journey-when">After the summit</span>
-        <h3>The network keeps shining</h3>
-        <p>Small peer groups by topic, a short monthly check-in, and a bank of solutions born in conversation — so the connections last beyond the day.</p>
-      </li>
-    </ol>
-  </section>
-
-  <!-- MAP -->
-  <section class="section" id="map">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="eyebrow">Star map</p>
-        <h2>The summit network at a glance</h2>
-        <p class="section-sub">Each point is a principal. A line means they share at least two challenges. Pick a topic to see who's working on it.</p>
-      </div>
-      <div class="chips" id="topicChips" role="group" aria-label="Filter by topic"></div>
-    </div>
-    <div class="map-stage wrap">
-      <canvas id="net" class="net" role="img" aria-label="Network map of summit participants"></canvas>
-      <aside class="map-card" id="mapCard" aria-live="polite">
-        <p class="map-card-hint">Hover or tap a star to meet the principal</p>
-      </aside>
-      <p class="sample-note">Sample participants · names and details are fictional</p>
-    </div>
-  </section>
-
-  <!-- MATCH -->
-  <section class="section wrap" id="match">
-    <div class="section-head">
-      <p class="eyebrow">My connections</p>
-      <h2>Tell us about you — we'll find your nearest stars</h2>
-      <p class="section-sub">Matching happens instantly, right in your browser. Personal AI wording runs only when you ask for it.</p>
-    </div>
-
-    <div class="match-grid">
-      <form class="profile" id="profileForm" novalidate>
-        <p class="form-note">We filled in a sample profile — change anything you like</p>
-        <div class="field-row">
-          <div class="field">
-            <label for="f-name">Name</label>
-            <input id="f-name" name="name" type="text" maxlength="40" value="Michal Avraham" autocomplete="name">
-          </div>
-          <div class="field">
-            <label for="f-level">School level</label>
-            <select id="f-level" name="level">
-              <option value="elem">Elementary</option>
-              <option value="mid" selected>Middle school</option>
-              <option value="high">High school</option>
-              <option value="six">6-year school</option>
-            </select>
-          </div>
-        </div>
-        <div class="field">
-          <label for="f-region">Region</label>
-          <select id="f-region" name="region">
-            <option value="north">North</option>
-            <option value="haifa">Haifa area</option>
-            <option value="center" selected>Center</option>
-            <option value="jlm">Jerusalem area</option>
-            <option value="south">South</option>
-          </select>
-        </div>
-        <fieldset class="field">
-          <legend>What I'm working on this year</legend>
-          <div class="pick" id="pick-topics"></div>
-        </fieldset>
-        <fieldset class="field">
-          <legend>Where I'm strong and can help</legend>
-          <div class="pick" id="pick-gives"></div>
-        </fieldset>
-        <fieldset class="field">
-          <legend>What I'd most like to learn from peers</legend>
-          <div class="pick" id="pick-seeks"></div>
-        </fieldset>
-        <div class="field">
-          <label for="f-note">One line about your school <span class="opt">(optional)</span></label>
-          <textarea id="f-note" name="note" rows="2" maxlength="200">A growing school with many new immigrant families. Looking for ways to involve parents who don't speak Hebrew.</textarea>
-        </div>
-        <button class="btn btn-primary btn-block" type="submit">Light up my star</button>
-      </form>
-
-      <div class="results" id="results" aria-live="polite">
-        <div class="results-head">
-          <h3>Your first three connections</h3>
-          <button class="btn btn-soft btn-sm" type="button" id="aiBtn">
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1 L9.3 6.7 L15 8 L9.3 9.3 L8 15 L6.7 9.3 L1 8 L6.7 6.7 Z" fill="currentColor"/></svg>
-            Personalize with AI
-          </button>
-        </div>
-        <p class="ai-status" id="aiStatus" hidden></p>
-        <ol class="match-list" id="matchList"></ol>
-      </div>
-    </div>
-  </section>
-
-  <!-- BOARD -->
-  <section class="section wrap" id="board">
-    <div class="section-head">
-      <p class="eyebrow">The board</p>
-      <h2>Ask, share, offer — in any language</h2>
-      <p class="section-sub">Leave a question, an idea or an offer to help. Write in Hebrew, Arabic, Russian or English — every post is translated into English automatically, and the original is always one tap away.</p>
-    </div>
-
-    <div class="board-grid">
-      <form class="profile board-form" id="boardForm" novalidate>
-        <div class="kind" role="radiogroup" aria-label="Post type">
-          <label><input type="radio" name="kind" value="question" id="k-question" checked>Question</label>
-          <label><input type="radio" name="kind" value="idea" id="k-idea">Idea</label>
-          <label><input type="radio" name="kind" value="offer" id="k-offer">Offer to help</label>
-        </div>
-        <div class="field">
-          <label for="b-text">Your message</label>
-          <textarea id="b-text" name="text" rows="4" maxlength="500" dir="auto" placeholder="e.g. איך אתם מגייסים הורים למועצת בית הספר?">מישהו כבר ניסה להכניס שיעור שבועי של רווחה רגשית לכל הכיתות? אשמח לשמוע איך התחלתם.</textarea>
-          <p class="counter"><span id="b-count">0</span>/500</p>
-        </div>
-        <div class="field-row">
-          <div class="field">
-            <label for="b-name">Name</label>
-            <input id="b-name" name="name" type="text" maxlength="40" value="מיכל אברהם" dir="auto">
-          </div>
-          <div class="field">
-            <label for="b-school">School</label>
-            <input id="b-school" name="school" type="text" maxlength="60" value="חטיבת הרימון" dir="auto">
-          </div>
-        </div>
-        <button class="btn btn-primary btn-block" type="submit" id="boardBtn">Post to the board</button>
-        <p class="form-note" id="boardStatus" aria-live="polite">Hebrew and other languages are translated to English as you post.</p>
-      </form>
-
-      <ul class="posts" id="posts" aria-live="polite"></ul>
-    </div>
-  </section>
-
-  <!-- EVENT -->
-  <section class="section" id="event">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="eyebrow">At the summit</p>
-        <h2>The hall becomes a night sky</h2>
-        <p class="section-sub">Ideas for the day itself — each one built on the same site and the same network.</p>
-      </div>
-      <div class="features">
-        <article class="feature feature-lead">
-          <div class="feature-visual" aria-hidden="true"><canvas id="wall" class="wall"></canvas></div>
-          <div>
-            <h3>The living star wall</h3>
-            <p>A big screen in the hall shows the network growing. Every new introduction draws a line, every discussion circle lights up a constellation. At the end of the day — one picture of every connection made.</p>
-          </div>
-        </article>
-        <article class="feature">
-          <h3>Tap to connect</h3>
-          <p>Every badge has a personal QR code. Scan each other to save the contact and add a line to the map — no business cards.</p>
-        </article>
-        <article class="feature">
-          <h3>Matched discussion circles</h3>
-          <p>Tables of 6–8 principals grouped in advance by a shared challenge, with an opening question and a Foundation facilitator.</p>
-        </article>
-        <article class="feature">
-          <h3>The question hour</h3>
-          <p>Principals post a real question from their school; peers who've solved it tap “I can help”.</p>
-        </article>
-        <article class="feature">
-          <h3>My summit plan</h3>
-          <p>The schedule on your phone, with a nudge: “who to meet at the next break”, based on your connections.</p>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <!-- AFTER -->
-  <section class="section wrap" id="after">
-    <div class="section-head">
-      <p class="eyebrow">After the summit</p>
-      <h2>Constellations that stay</h2>
-    </div>
-    <div class="after-grid">
-      <div class="after-item">
-        <h3>Peer groups</h3>
-        <p>4–6 principals around one topic, a 45-minute video call once a month. The Foundation opens it; the principals lead it.</p>
-      </div>
-      <div class="after-item">
-        <h3>“How we solved it”</h3>
-        <p>Short solutions from the conversations, tagged by topic — easy to find when the same problem reaches another school.</p>
-      </div>
-      <div class="after-item">
-        <h3>My star, next year</h3>
-        <p>Your profile is saved. At the next summit, see how your personal network has grown and who joined it.</p>
-      </div>
-    </div>
-    <blockquote class="quote">
-      <p>“The best idea I had this year came from a principal I met over coffee.”</p>
-      <cite>High school principal, previous summit · sample quote</cite>
-    </blockquote>
-  </section>
-
-</main>
-
-<footer class="footer wrap">
-  <img class="footer-logo" src="assets/yael-logo.png" alt="Yael Foundation">
-  <p>Annual Summit for School Principals · prototype for review</p>
-</footer>
-
-<script src="data.js"></script>
-<script src="app.js"></script>
+  <noscript><p class="wrap">This site needs JavaScript to run.</p></noscript>
+  <script src="app.js" type="module"></script>
 </body>
 </html>
