@@ -23,6 +23,8 @@ const I = {
   send: '<path d="M4 12 20 4l-6 16-3-7z"/>',
   spark: '<path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"/>',
   back: '<path d="M15 5 8 12l7 7"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/>',
 };
 const icon = (name, fill = false) =>
   `<svg viewBox="0 0 24 24" aria-hidden="true" fill="${fill ? "currentColor" : "none"}" stroke="${fill ? "none" : "currentColor"}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${I[name]}</svg>`;
@@ -71,6 +73,16 @@ async function api(method, path, body) {
   }
   return data;
 }
+
+// Night (the summit's colors) or Day (light). Chosen per device; the maps stay night skies either way.
+const isDay = () => document.documentElement.dataset.theme === "day";
+function setTheme(day) {
+  if (day) document.documentElement.dataset.theme = "day"; else delete document.documentElement.dataset.theme;
+  $('meta[name="theme-color"]').content = day ? "#F5F3EE" : "#060D26";
+  try { localStorage.setItem("theme", day ? "day" : "night"); } catch { /* storage unavailable */ }
+  renderChrome();
+}
+const themeButton = () => `<button class="btn btn-quiet theme-btn" id="themeBtn" type="button" aria-label="${isDay() ? "Switch to night mode" : "Switch to day mode"}" title="${isDay() ? "Night mode" : "Day mode"}">${icon(isDay() ? "moon" : "sun")}</button>`;
 
 const state = { me: null, counts: { requests: 0, unread: 0 }, topics: {}, levels: {} };
 const topicLabel = (t) => state.topics[t] || t;
@@ -156,12 +168,13 @@ function renderChrome() {
   $("#nav").innerHTML = signed
     ? NAV.map(([href, label, ic]) => `<a href="${href}" ${current(href) ? 'aria-current="page"' : ""}>${label}${badge(ic)}</a>`).join("")
     : `<a href="#/summit" ${current("#/summit") ? 'aria-current="page"' : ""}>The Summit</a>`;
-  $("#navEnd").innerHTML = signed
+  $("#navEnd").innerHTML = themeButton() + (signed
     ? `<button class="me-btn" id="meBtn" aria-haspopup="true" aria-expanded="false">${avatar(state.me, "xs")}<span class="me-name">${esc(first(state.me.full_name))}</span></button>
        <div class="menu" id="meMenu" hidden>
          <a href="#/u/${state.me.id}">My profile</a><a href="#/me/edit">Edit profile</a><a href="#/summit">The Summit</a><button id="signOut">Sign out</button>
        </div>`
-    : `<a class="btn btn-quiet btn-sm" href="#/signin">Sign in</a><a class="btn btn-gold btn-sm" href="#/join">Join</a>`;
+    : `<a class="btn btn-quiet btn-sm" href="#/signin">Sign in</a><a class="btn btn-gold btn-sm" href="#/join">Join</a>`);
+  $("#themeBtn").onclick = () => setTheme(!isDay());
   const tab = $("#tabbar");
   tab.hidden = !signed;
   if (signed) {
@@ -221,10 +234,10 @@ function sky(cv) {
   };
   build(); const onR = () => build(); addEventListener("resize", onR); onLeave(() => removeEventListener("resize", onR));
   animate((t) => {
-    const { c, w, h } = g, k = (reduceMotion ? 6000 : t) / 1000; c.clearRect(0, 0, w, h);
+    const { c, w, h } = g, k = (reduceMotion ? 6000 : t) / 1000, day = isDay(); c.clearRect(0, 0, w, h);
     for (const gr of groups) {
       const p = ((k + gr.ph) % gr.per) / gr.per, grow = Math.min(1, p * 3), a = p < .75 ? 1 : 1 - (p - .75) / .25;
-      c.strokeStyle = `rgba(216,176,96,${.35 * a})`; c.lineWidth = .8; c.beginPath();
+      c.strokeStyle = day ? `rgba(176,132,48,${.45 * a})` : `rgba(216,176,96,${.35 * a})`; c.lineWidth = .8; c.beginPath();
       const segs = (gr.chain.length - 1) * grow;
       for (let i = 0; i < gr.chain.length - 1; i++) {
         const f = Math.max(0, Math.min(1, segs - i)); if (!f) break;
@@ -234,7 +247,7 @@ function sky(cv) {
     }
     for (const s of stars) {
       const tw = reduceMotion ? .8 : .5 + .5 * Math.sin(k * 1.3 + s.t);
-      c.fillStyle = `rgba(242,240,234,${tw})`; c.beginPath(); c.arc(s.x, s.y, s.s, 0, 7); c.fill();
+      c.fillStyle = day ? `rgba(24,43,110,${tw * .55})` : `rgba(242,240,234,${tw})`; c.beginPath(); c.arc(s.x, s.y, s.s, 0, 7); c.fill();
     }
   });
 }
@@ -323,9 +336,9 @@ function landing(mode) {
           <li>Ask the whole network, in any language.</li>
         </ul>
         <div class="land-stats" id="landStats" hidden></div>
-        <div class="land-foot"><a href="#/summit" class="btn btn-quiet">About the summit →</a></div>
+        <div class="land-foot"><button type="button" class="btn btn-gold only-phone" id="toForm">${join ? "Create your profile" : "Sign in"}</button><a href="#/summit" class="btn btn-quiet">About the summit →</a></div>
       </div>
-      <div class="auth panel-lg fade-in">
+      <div class="auth panel-lg fade-in" id="authCard">
         <p class="label">${join ? "Join the constellation" : "Welcome back"}</p>
         <h2>${join ? "Create your profile" : "Sign in"}</h2>
         <form id="authForm" novalidate>
@@ -347,6 +360,7 @@ function landing(mode) {
     box.hidden = false;
   }).catch(() => {});
   $$("[data-to]").forEach((b) => (b.onclick = () => go(`#/${b.dataset.to}`)));
+  $("#toForm").onclick = () => { $("#authCard").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }); setTimeout(() => $("#authForm input")?.focus({ preventScroll: true }), reduceMotion ? 0 : 450); };
   $("#authForm").onsubmit = async (e) => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target));
@@ -822,7 +836,7 @@ async function profile(id) {
         <div class="id">
           <h1 class="display">${esc(p.full_name)}</h1>${p.sample ? `<p>${sampleTag(p)} <span class="tiny">A sample profile, here to show how the network works.</span></p>` : ""}
           <p class="role">${esc([p.role_title, p.school].filter(Boolean).join(" · ") || "Principal")}</p>
-          <div class="loc">${place(p) ? `<span>${esc(place(p))}</span>` : ""}${p.level ? `<span>${esc(state.levels[p.level] || "")}</span>` : ""}<span><b style="color:var(--gold-2)">${p.connections}</b> connection${p.connections === 1 ? "" : "s"}</span></div>
+          <div class="loc">${place(p) ? `<span>${esc(place(p))}</span>` : ""}${p.level ? `<span>${esc(state.levels[p.level] || "")}</span>` : ""}<span><b style="color:var(--gold-ink)">${p.connections}</b> connection${p.connections === 1 ? "" : "s"}</span></div>
         </div>
         <div class="acts" id="profActs">${connectButtons(p)}${p.connection === "connected" ? `<span class="state connected" style="align-self:center">Connected</span>` : ""}</div>
       </div>
@@ -1035,11 +1049,12 @@ async function board() {
       <div class="board">
         <div class="stack" id="posts">${data.posts.length ? data.posts.map((p) => postHTML(p, data.me)).join("") : `<div class="empty" id="noPosts"><b>No posts yet.</b><span>Ask a question, share an idea, or offer help. Write in any language — it's translated to English for everyone.</span></div>`}</div>
         <form class="panel-lg compose" id="compose" novalidate>
-          <div class="seg" role="radiogroup" aria-label="Post type">
+          <button type="button" class="compose-open" id="composeOpen">${avatar(state.me, "sm")}<span class="grow">Ask, share an idea or offer help…</span><span class="plus" aria-hidden="true">+</span></button>
+          <div class="compose-head"><div class="seg" role="radiogroup" aria-label="Post type">
             <label><input type="radio" name="kind" value="question" id="k-q" checked>Question</label>
             <label><input type="radio" name="kind" value="idea" id="k-i">Idea</label>
             <label><input type="radio" name="kind" value="offer" id="k-o">Offer help</label>
-          </div>
+          </div><button type="button" class="btn btn-quiet btn-sm compose-close" id="composeClose">Close</button></div>
           <label class="field"><span>Your post</span><textarea class="textarea" id="postText" name="text" maxlength="1000" dir="auto" placeholder="How are you handling… ? / We tried… / Happy to share…"></textarea>
             <span class="hint">Posted under your name. Any language works; it's translated to English once, when you post.</span></label>
           <button class="btn btn-gold btn-block" type="submit">Post to the board</button>
@@ -1048,7 +1063,9 @@ async function board() {
     </div>`;
   });
   if (!ok) return;
-  const root = view.firstElementChild, list = $("#posts");
+  const root = view.firstElementChild, list = $("#posts"), form = $("#compose");
+  $("#composeOpen").onclick = () => { form.classList.add("open"); $("#postText").focus(); };
+  $("#composeClose").onclick = () => form.classList.remove("open");
   $("#compose").onsubmit = async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target), btn = e.target.querySelector("[type=submit]");
@@ -1059,7 +1076,7 @@ async function board() {
       const { post } = await api("POST", "/api/board", { kind: fd.get("kind"), text });
       $("#noPosts")?.remove();
       data.posts.unshift(post); list.insertAdjacentHTML("afterbegin", postHTML(post, state.me.id));
-      e.target.reset(); toast(post.original ? `Posted, translated from ${LANGS[post.lang] || "your language"}.` : "Posted.");
+      e.target.reset(); form.classList.remove("open"); toast(post.original ? `Posted, translated from ${LANGS[post.lang] || "your language"}.` : "Posted.");
     } catch (err) { toast(err.message); }
     btn.disabled = false; btn.textContent = "Post to the board";
   };
