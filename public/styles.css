@@ -373,3 +373,13 @@ button.chip { border: 0; cursor: pointer; font: inherit; font-size: .8rem; }
 }
 .map-wrap.globe { background: radial-gradient(ellipse at 50% 50%, rgba(46, 102, 245, .18), transparent 65%), #030819; }
 .map-wrap.globe canvas { height: auto; min-height: 280px; }
+
+/* ---------- map color controls ---------- */
+.map-controls { display: grid; gap: 10px; width: 100%; }
+.colorby { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.legend .chip { display: inline-flex; align-items: center; gap: 7px; }
+.legend .chip i { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.legend .chip small { font-size: .7rem; opacity: .65; font-variant-numeric: tabular-nums; }
+.legend .chip:disabled { opacity: .35; cursor: default; }
+.legend .chip.gold i { box-shadow: none !important; }
+@media (max-width: 640px) { .legend { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; scrollbar-width: none; } }

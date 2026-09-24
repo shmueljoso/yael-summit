@@ -455,9 +455,13 @@ function people(mode) {
     topic = c.dataset.topic; $$("#ptopics .chip").forEach((x) => (x.className = `chip ${x === c ? "gold" : "plain"}`)); then(topic);
   };
 
-  if (mode === "map") { constellationMap((setFilter) => ($("#ptopics").onclick = (e) => pickTopic(e, setFilter))); return; }
-  if (mode === "globe") { globeMap((setFilter) => ($("#ptopics").onclick = (e) => pickTopic(e, setFilter))); return; }
-  if (mode === "world") { worldMap((setFilter) => ($("#ptopics").onclick = (e) => pickTopic(e, setFilter))); return; }
+  if (mode !== "list") {
+    mapStyle.filter = ""; mapStyle.changed = null;
+    const ctl = $("#ptopics"); ctl.className = "map-controls"; ctl.removeAttribute("role");
+    const ready = (nodes) => mapControls(ctl, nodes);
+    ({ map: constellationMap, world: worldMap, globe: globeMap })[mode](ready);
+    return;
+  }
 
   const token = routeToken, body = $("#pbody");
   async function refresh() {
@@ -474,6 +478,44 @@ function people(mode) {
   refresh();
 }
 
+// Shared by the three maps: what the colors mean, and which group is highlighted.
+const TOPIC_COLORS = ["#8DB8FF", "#F1D591", "#7FDDB0", "#E78FB3", "#B39CFF", "#6FD3E8", "#F2A66B", "#A8E26B", "#FF9F9F", "#5FA8FF", "#E6A8FF", "#FFD36B"];
+const LEVEL_COLORS = { early: "#FF9F9F", elem: "#F1D591", mid: "#7FDDB0", high: "#8DB8FF", k12: "#B39CFF", supp: "#F2A66B", other: "#A9B3D6" };
+const mapStyle = { by: (() => { try { return localStorage.getItem("mapBy") || "topic"; } catch { return "topic"; } })(), filter: "", changed: null };
+const groupOf = (n) => (mapStyle.by === "level" ? n.level || "" : n.topics[0] || "");
+function groups() {
+  if (mapStyle.by === "level") return Object.entries(state.levels).map(([k, v]) => [k, v, LEVEL_COLORS[k] || "#A9B3D6"]);
+  return Object.entries(state.topics).map(([k, v], i) => [k, v, TOPIC_COLORS[i % TOPIC_COLORS.length]]);
+}
+function colorOf(n) { const g = groups().find(([k]) => k === groupOf(n)); return g ? g[2] : "#A9B3D6"; }
+const inFocus = (n) => !mapStyle.filter || (mapStyle.by === "level" ? n.level === mapStyle.filter : n.topics.includes(mapStyle.filter));
+
+/** "Color by" switch and a clickable legend, shared by Constellation, World and Globe. */
+function mapControls(box, nodes) {
+  const counts = new Map();
+  for (const n of nodes) { const k = groupOf(n); counts.set(k, (counts.get(k) || 0) + 1); }
+  box.innerHTML = `
+    <div class="colorby"><span class="tiny">Color by</span>
+      <div class="seg" role="radiogroup" aria-label="Color by">
+        <label><input type="radio" name="cb" value="topic" id="cb-topic" ${mapStyle.by === "topic" ? "checked" : ""}>Main topic</label>
+        <label><input type="radio" name="cb" value="level" id="cb-level" ${mapStyle.by === "level" ? "checked" : ""}>School type</label>
+      </div></div>
+    <div class="chips legend" role="group" aria-label="Highlight a group">
+      <button class="chip ${mapStyle.filter ? "plain" : "gold"}" data-group="">All</button>
+      ${groups().map(([k, v, c]) => `<button class="chip ${mapStyle.filter === k ? "gold" : "plain"}" data-group="${k}" ${counts.get(k) ? "" : "disabled"}><i style="background:${c};box-shadow:0 0 8px ${c}"></i>${esc(v)}<small>${counts.get(k) || 0}</small></button>`).join("")}
+    </div>`;
+  $$("[name=cb]", box).forEach((r) => (r.onchange = () => {
+    mapStyle.by = r.value; mapStyle.filter = "";
+    try { localStorage.setItem("mapBy", r.value); } catch { /* storage unavailable */ }
+    mapControls(box, nodes); mapStyle.changed?.();
+  }));
+  $(".legend", box).onclick = (e) => {
+    const b = e.target.closest("[data-group]"); if (!b || b.disabled) return;
+    mapStyle.filter = mapStyle.filter === b.dataset.group ? "" : b.dataset.group;
+    mapControls(box, nodes); mapStyle.changed?.();
+  };
+}
+
 async function constellationMap(onFilterReady) {
   const token = routeToken, body = $("#pbody");
   let data;
@@ -483,20 +525,23 @@ async function constellationMap(onFilterReady) {
     <div class="map-legend"><span><i style="background:var(--gold)"></i>your connections</span><span><i style="background:var(--sky)"></i>other connections</span><span>${data.nodes.length} principals · ${data.edges.length} connections</span></div>
     <div class="map-tip" id="mapTip" hidden></div></div>`;
   const cv = $("#mapCv"), tip = $("#mapTip");
-  const topicKeys = Object.keys(state.topics);
-  const COLORS = ["#8DB8FF", "#F1D591", "#7FDDB0", "#E78FB3", "#B39CFF", "#6FD3E8", "#F2A66B", "#9FB0FF", "#E6C07A", "#86E0C8", "#FF9F9F", "#C7D2FF"];
-  let filter = "";
-  onFilterReady((f) => (filter = f));
+  onFilterReady(data.nodes);
   const mine = new Set(data.edges.filter((e) => e.includes(data.me)).flat());
 
-  let g, nodes, byId;
+  let g, nodes, byId, labels = [];
   const layout = () => {
     g = fit(cv);
-    const r = seeded(99);
+    const r = seeded(99), keys = groups().map(([k]) => k).filter((k) => data.nodes.some((n) => groupOf(n) === k));
     nodes = data.nodes.map((n) => {
-      const ti = Math.max(0, topicKeys.indexOf(n.topics[0] || ""));
-      const a = (ti / topicKeys.length) * Math.PI * 2 - Math.PI / 2, center = n.id === data.me;
-      return { ...n, x: center ? .5 : .5 + Math.cos(a) * .3 + (r() - .5) * .16, y: center ? .5 : .5 + Math.sin(a) * .32 + (r() - .5) * .16, c: n.topics[0] ? COLORS[ti % COLORS.length] : "#A9B3D6", t: r() * 6 };
+      const gi = keys.indexOf(groupOf(n)), center = n.id === data.me;
+      const a = gi < 0 ? r() * Math.PI * 2 : (gi / Math.max(1, keys.length)) * Math.PI * 2 - Math.PI / 2, rr = gi < 0 ? .12 : .3;
+      return { ...n, x: center ? .5 : .5 + Math.cos(a) * rr + (r() - .5) * .16, y: center ? .5 : .5 + Math.sin(a) * (rr + .02) + (r() - .5) * .16, c: colorOf(n), t: r() * 6 };
+    });
+    // group names placed just outside each cluster
+    const all = groups();
+    labels = keys.map((k, gi) => {
+      const a = (gi / Math.max(1, keys.length)) * Math.PI * 2 - Math.PI / 2, [, name, color] = all.find(([kk]) => kk === k);
+      return { k, name, color, x: .5 + Math.cos(a) * .44, y: .5 + Math.sin(a) * .44 };
     });
     for (let it = 0; it < 120; it++) for (const n of nodes) {
       if (n.id === data.me) continue;
@@ -507,6 +552,7 @@ async function constellationMap(onFilterReady) {
   };
   layout();
   addEventListener("resize", layout); onLeave(() => removeEventListener("resize", layout));
+  mapStyle.changed = layout;
   let hover = null;
   const P = (n) => [n.x * g.w, n.y * g.h];
   const rd = seeded(5), dust = Array.from({ length: 140 }, () => ({ x: rd(), y: rd(), s: rd() < .1 ? 1.6 : 1, a: .15 + rd() * .35 }));
@@ -514,7 +560,16 @@ async function constellationMap(onFilterReady) {
   animate((t) => {
     const { c, w, h } = g, k = t / 1000; c.clearRect(0, 0, w, h);
     for (const s of dust) { c.fillStyle = `rgba(242,240,234,${s.a})`; c.fillRect(s.x * w, s.y * h, s.s, s.s); }
-    const on = (n) => !filter || n.topics.includes(filter);
+    const on = inFocus;
+    if (w >= 600) { // on narrow screens the legend above the map does this job
+      c.font = "600 11px Montserrat, DM Sans, sans-serif"; c.textAlign = "center";
+      for (const l of labels) {
+        const text = l.name.toUpperCase(), half = c.measureText(text).width / 2 + 10;
+        c.globalAlpha = !mapStyle.filter || mapStyle.filter === l.k ? .9 : .2;
+        c.fillStyle = l.color; c.fillText(text, Math.min(w - half, Math.max(half, l.x * w)), Math.min(h - 10, Math.max(16, l.y * h)));
+      }
+      c.globalAlpha = 1;
+    }
     for (const [a, b] of data.edges) {
       const A = byId.get(a), B = byId.get(b); if (!A || !B) continue;
       const isMine = a === data.me || b === data.me;
@@ -555,7 +610,7 @@ async function worldMap(onFilterReady) {
     <div class="map-tip" id="mapTip" hidden></div></div>
     ${placed.length < data.nodes.length ? `<p class="tiny" style="margin-top:10px">${data.nodes.length - placed.length} principal(s) aren't on the map yet: add a city and country to the profile.</p>` : ""}`;
   const cv = $("#worldCv"), tip = $("#mapTip");
-  let filter = ""; onFilterReady((f) => (filter = f));
+  onFilterReady(data.nodes);
   const mine = new Set(data.edges.filter((e) => e.includes(data.me)).flat());
 
   // Projection: equirectangular, trimmed to where people live (lat 78°N to 56°S).
@@ -596,7 +651,7 @@ async function worldMap(onFilterReady) {
   animate((t) => {
     const { c, w, h } = g, k = t / 1000;
     c.clearRect(0, 0, w, h); c.drawImage(dots, 0, 0, w, h);
-    const on = (n) => !filter || n.topics.includes(filter);
+    const on = inFocus;
     data.edges.forEach(([a, b], i) => {
       const A = byId.get(a), B = byId.get(b); if (!A || !B) return;
       const isMine = a === data.me || b === data.me, [cx, cy] = arc(A, B);
@@ -612,7 +667,7 @@ async function worldMap(onFilterReady) {
       const me = n.id === data.me, tw = reduceMotion ? 1 : .75 + .25 * Math.sin(k * 1.4 + n.t);
       const rad = me ? 6 : n === hover ? 5.5 : mine.has(n.id) ? 4 : 3.2;
       c.globalAlpha = on(n) || me ? tw : .15;
-      c.fillStyle = me || mine.has(n.id) ? "#F1D591" : "#CFE0FF"; c.shadowColor = c.fillStyle; c.shadowBlur = me || n === hover ? 16 : 7;
+      c.fillStyle = me ? "#F1D591" : colorOf(n); c.shadowColor = c.fillStyle; c.shadowBlur = me || n === hover ? 16 : 7;
       c.beginPath(); c.arc(n.x, n.y, rad, 0, 7); c.fill(); c.shadowBlur = 0; c.globalAlpha = 1;
       if (me || n === hover) { c.fillStyle = "#F2F0EA"; c.font = "500 12px DM Sans, sans-serif"; c.textAlign = "center"; c.fillText(me ? "You" : n.name, n.x, n.y - rad - 7); }
     }
@@ -639,7 +694,7 @@ async function globeMap(onFilterReady) {
     <div class="map-legend"><span><i style="background:var(--gold)"></i>your connections</span><span><i style="background:var(--sky)"></i>other connections</span><span>Drag to spin the globe</span></div>
     <div class="map-tip" id="mapTip" hidden></div></div>`;
   const cv = $("#globeCv"), tip = $("#mapTip");
-  let filter = ""; onFilterReady((f) => (filter = f));
+  onFilterReady(data.nodes);
   const mine = new Set(data.edges.filter((e) => e.includes(data.me)).flat());
   const RAD = Math.PI / 180;
 
@@ -697,7 +752,7 @@ async function globeMap(onFilterReady) {
     c.fillStyle = sea; c.beginPath(); c.arc(cx, cy, R, 0, 7); c.fill();
     // continents as dots, dimmer toward the edge
     for (const [la, lo] of land) { const [x, y, z] = project(la, lo); if (z > 0) { c.fillStyle = `rgba(141,184,255,${.12 + .3 * z})`; c.fillRect(x - .9, y - .9, 1.8, 1.8); } }
-    const on = (n) => !filter || n.topics.includes(filter);
+    const on = inFocus;
     // arcs: draw only the segments on the visible side
     arcs.forEach((a, i) => {
       const isMine = a.a === data.me || a.b === data.me;
@@ -718,7 +773,7 @@ async function globeMap(onFilterReady) {
       const isMe = n.id === data.me, tw = reduceMotion ? 1 : .75 + .25 * Math.sin(k * 1.4 + n.t);
       const rad = (isMe ? 6 : n === hover ? 5.5 : mine.has(n.id) ? 4 : 3.2) * (.6 + .4 * z);
       c.globalAlpha = (on(n) || isMe ? tw : .15) * (.5 + .5 * z);
-      c.fillStyle = isMe || mine.has(n.id) ? "#F1D591" : "#DCE8FF"; c.shadowColor = c.fillStyle; c.shadowBlur = isMe || n === hover ? 16 : 7;
+      c.fillStyle = isMe ? "#F1D591" : colorOf(n); c.shadowColor = c.fillStyle; c.shadowBlur = isMe || n === hover ? 16 : 7;
       c.beginPath(); c.arc(x, y, rad, 0, 7); c.fill(); c.shadowBlur = 0; c.globalAlpha = 1;
       if (isMe || n === hover) { c.fillStyle = "#F2F0EA"; c.font = "500 12px DM Sans, sans-serif"; c.textAlign = "center"; c.fillText(isMe ? "You" : n.name, x, y - rad - 7); }
       shown.push([n, x, y]);
