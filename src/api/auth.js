@@ -19,6 +19,7 @@ export async function signup({ request, env }) {
   if (full_name.split(" ").filter(Boolean).length < 2) return error(400, "full_name", "Please enter your full name (first and last).");
   if (!EMAIL.test(email)) return error(400, "email", "Please enter a valid email address.");
   if (password.length < 8) return error(400, "password", "Use a password of at least 8 characters.");
+  if (b.agree !== true && b.agree !== "on") return error(400, "agree", "Please agree to the privacy policy and terms to join.");
 
   const d = await db(env);
   if (await d.prepare("SELECT 1 FROM users WHERE email = ?").bind(email).first()) {
@@ -28,8 +29,8 @@ export async function signup({ request, env }) {
   const salt = randomId(16);
   const pass_hash = await hashPassword(password, salt);
   await d.prepare(
-    "INSERT INTO users (id, email, pass_hash, salt, full_name, created_at) VALUES (?, ?, ?, ?, ?, ?)"
-  ).bind(id, email, pass_hash, salt, full_name, Date.now()).run();
+    "INSERT INTO users (id, email, pass_hash, salt, full_name, created_at, consented_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).bind(id, email, pass_hash, salt, full_name, Date.now(), Date.now()).run();
 
   const cookie = await startSession(env, id, request);
   const u = await d.prepare("SELECT * FROM users WHERE id = ?").bind(id).first();

@@ -6,6 +6,7 @@
 import { json, error, clip, clipText, readJson, randomId, limited } from "../lib/http.js";
 import { db, card, requireUser } from "../lib/db.js";
 import { gemini } from "../lib/gemini.js";
+import { sendMail, siteUrl } from "../lib/mail.js";
 
 const KINDS = new Set(["question", "idea", "offer"]);
 const needsTranslation = (s) => /[^\u0000-ɏḀ-ỿ -⁯₠-⃏\s]/.test(s);
@@ -52,10 +53,37 @@ export async function createPost({ request, env }) {
   return json({ post: { ...post, at: now, author: card(u) } }, 201);
 }
 
+/** POST /api/board/:id/report { reason } — flag a post for the foundation team. */
+export async function reportPost({ request, env, params, waitUntil }) {
+  const u = await requireUser(env, request);
+  if (await limited(env, `report:${u.id}`, 5)) return error(429, "slow_down", "Try again in a minute.");
+  const b = await readJson(request);
+  const d = await db(env);
+  const post = await d.prepare("SELECT p.id, p.text, a.full_name FROM posts p JOIN users a ON a.id = p.user_id WHERE p.id = ?").bind(params.id).first();
+  if (!post) return error(404, "not_found", "This post was already removed.");
+  const reason = clip(b.reason, 300);
+  const r = await d.prepare("INSERT OR IGNORE INTO reports (id, post_id, reporter_id, reason, created_at) VALUES (?, ?, ?, ?, ?)")
+    .bind(randomId(8), post.id, u.id, reason, Date.now()).run();
+  const admins = String(env.ADMIN_EMAILS || "").split(/[\s,;]+/).filter(Boolean);
+  if (r.meta?.changes && admins.length) {
+    waitUntil(sendMail(env, {
+      to: admins, subject: "A board post was reported",
+      heading: "A board post was reported",
+      lines: [`${u.full_name} reported a post by ${post.full_name}.`, reason ? `Reason: ${reason}` : "No reason given."],
+      quote: post.text.slice(0, 400), button: "Review it", url: siteUrl(request, "#/admin"),
+    }));
+  }
+  return json({ ok: true });
+}
+
 /** DELETE /api/board/:id — authors can remove their own posts. */
 export async function deletePost({ request, env, params }) {
   const u = await requireUser(env, request);
   const d = await db(env);
-  await d.prepare("DELETE FROM posts WHERE id = ? AND user_id = ?").bind(params.id, u.id).run();
+  const mine = await d.prepare("SELECT 1 FROM posts WHERE id = ? AND user_id = ?").bind(params.id, u.id).first();
+  if (mine) await d.batch([
+    d.prepare("DELETE FROM reports WHERE post_id = ?").bind(params.id),
+    d.prepare("DELETE FROM posts WHERE id = ?").bind(params.id),
+  ]);
   return json({ ok: true });
 }

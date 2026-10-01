@@ -84,7 +84,7 @@ function setTheme(day) {
 }
 const themeButton = () => `<button class="btn btn-quiet theme-btn" id="themeBtn" type="button" aria-label="${isDay() ? "Switch to night mode" : "Switch to day mode"}" title="${isDay() ? "Night mode" : "Day mode"}">${icon(isDay() ? "moon" : "sun")}</button>`;
 
-const state = { me: null, counts: { requests: 0, unread: 0 }, topics: {}, levels: {} };
+const state = { me: null, admin: false, counts: { requests: 0, unread: 0 }, topics: {}, levels: {} };
 const topicLabel = (t) => state.topics[t] || t;
 
 // =============================================================
@@ -108,6 +108,8 @@ const ROUTES = [
   [/^messages$/, () => auth(() => messages(null))],
   [/^messages\/([\w-]+)$/, (id) => auth(() => messages(id))],
   [/^board$/, () => auth(() => board())],
+  [/^privacy$/, () => privacy()],
+  [/^admin$/, () => auth(() => (state.admin ? adminPage() : go("#/")))],
 ];
 
 function auth(fn) { if (!state.me) { go("#/signin"); return; } fn(); }
@@ -170,7 +172,7 @@ function renderChrome() {
   $("#navEnd").innerHTML = themeButton() + (signed
     ? `<button class="me-btn" id="meBtn" aria-haspopup="true" aria-expanded="false">${avatar(state.me, "xs")}<span class="me-name">${esc(first(state.me.full_name))}</span></button>
        <div class="menu" id="meMenu" hidden>
-         <a href="#/u/${state.me.id}">My profile</a><a href="#/me/edit">Edit profile</a><a href="#/summit">The Summit</a><button id="signOut">Sign out</button>
+         <a href="#/u/${state.me.id}">My profile</a><a href="#/me/edit">Edit profile</a><a href="#/summit">The Summit</a>${state.admin ? `<a href="#/admin">Admin</a>` : ""}<a href="#/privacy">Privacy & terms</a><button id="signOut">Sign out</button>
        </div>`
     : `<a class="btn btn-quiet btn-sm" href="#/signin">Sign in</a><a class="btn btn-gold btn-sm" href="#/join">Join</a>`);
   $("#themeBtn").onclick = () => setTheme(!isDay());
@@ -189,7 +191,7 @@ document.addEventListener("click", () => { const m = $("#meMenu"); if (m) m.hidd
 
 async function refreshMe() {
   const data = await api("GET", "/api/me");
-  state.me = data.me;
+  state.me = data.me; state.admin = !!data.admin;
   if (data.counts) state.counts = data.counts;
   if (data.taxonomy) { state.topics = data.taxonomy.topics; state.levels = data.taxonomy.levels; }
   renderChrome();
@@ -335,7 +337,7 @@ function landing(mode) {
           <li>Ask the whole network, in any language.</li>
         </ul>
         <div class="land-stats" id="landStats" hidden></div>
-        <div class="land-foot"><button type="button" class="btn btn-gold only-phone" id="toForm">${join ? "Create your profile" : "Sign in"}</button><a href="#/summit" class="btn btn-quiet">About the summit →</a></div>
+        <div class="land-foot"><button type="button" class="btn btn-gold only-phone" id="toForm">${join ? "Create your profile" : "Sign in"}</button><a href="#/summit" class="btn btn-quiet">About the summit →</a><a href="#/privacy" class="btn btn-quiet btn-sm">Privacy & terms</a></div>
       </div>
       <div class="auth panel-lg fade-in" id="authCard">
         <p class="label">${join ? "Join the constellation" : "Welcome back"}</p>
@@ -344,7 +346,8 @@ function landing(mode) {
           ${join ? `<label class="field"><span>Full name</span><input class="input" id="a-name" name="full_name" autocomplete="name" required placeholder="First and last name"><span class="hint">Shown to other principals exactly as you write it.</span></label>` : ""}
           <label class="field"><span>Email</span><input class="input" id="a-email" name="email" type="email" autocomplete="email" required></label>
           <label class="field"><span>Password</span><input class="input" id="a-pass" name="password" type="password" autocomplete="${join ? "new-password" : "current-password"}" required minlength="8">${join ? '<span class="hint">At least 8 characters.</span>' : ""}</label>
-          ${join ? `<label class="field"><span>Access code <span class="tiny">(from your invitation)</span></span><input class="input" id="a-code" name="code" autocomplete="off"></label>` : ""}
+          ${join ? `<label class="field"><span>Access code <span class="tiny">(from your invitation)</span></span><input class="input" id="a-code" name="code" autocomplete="off"></label>
+          <label class="check"><input type="checkbox" name="agree" id="a-agree" required><span>I agree to the <a href="#/privacy" target="_blank" rel="noopener">privacy policy and terms</a>.</span></label>` : ""}
           <p class="form-error" id="authErr" role="alert"></p>
           <button class="btn btn-gold btn-block" type="submit">${join ? "Light up my star" : "Sign in"}</button>
           <p class="switch">${join ? 'Already joined? <button type="button" data-to="signin">Sign in</button>' : 'New here? <button type="button" data-to="join">Create your profile</button>'}</p>
@@ -712,6 +715,14 @@ function editProfile() {
             ${Object.entries(LINK_NAMES).map(([k, v]) => `<label class="field"><span>${v}</span><input class="input" name="link-${k}" id="e-link-${k}" value="${esc(me.links?.[k] || "")}" placeholder="${k === "website" ? "yourschool.org" : `${k}.com/…`}"></label>`).join("")}
           </div>
         </section>
+        <section class="panel-lg group">
+          <div><h3 style="font-size:1.1rem">Email notifications</h3><p class="tiny">Sent to ${esc(me.email)}. At most one email per conversation every two hours, and none while you're on the site.</p></div>
+          <label class="check"><input type="checkbox" name="email_notify" id="e-notify" ${me.email_notify !== false ? "checked" : ""}><span>Email me about connection requests and new messages</span></label>
+        </section>
+        <section class="panel-lg group danger-zone">
+          <div><h3 style="font-size:1.1rem">Delete my account</h3><p class="tiny">Removes your profile, photo, connections, conversations and board posts for good. This can't be undone.</p></div>
+          <div><button type="button" class="btn btn-quiet btn-sm danger" id="delAccount">Delete my account…</button></div>
+        </section>
         <p class="form-error" id="editErr" role="alert"></p>
         <div class="savebar"><a class="btn btn-quiet" href="#/u/${me.id}">View profile</a><button class="btn btn-gold" type="submit">Save profile</button></div>
       </div>
@@ -761,12 +772,33 @@ function editProfile() {
     await api("DELETE", "/api/me/avatar").catch((err) => toast(err.message)); await refreshMe(); editProfile(); toast("Photo removed.");
   });
 
+  $("#delAccount").onclick = () => {
+    const d = document.createElement("dialog");
+    d.className = "panel-lg note-dialog";
+    d.innerHTML = `<form method="dialog" class="stack" id="delForm">
+      <h2 class="display" style="font-size:1.8rem">Delete your account?</h2>
+      <p class="muted small">Your profile, photo, connections, conversations and posts will be removed for good. Enter your password to confirm.</p>
+      <label class="field"><span>Password</span><input class="input" type="password" id="delPass" autocomplete="current-password" required></label>
+      <p class="form-error" id="delErr" role="alert"></p>
+      <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn btn-quiet" value="cancel" formnovalidate>Cancel</button><button class="btn btn-primary danger-fill" id="delGo" type="button">Delete for good</button></div>
+    </form>`;
+    d.addEventListener("close", () => d.remove());
+    document.body.appendChild(d); d.showModal();
+    $("#delGo", d).onclick = async () => {
+      const b = $("#delGo", d); b.disabled = true; $("#delErr", d).textContent = "";
+      try {
+        await api("DELETE", "/api/me", { password: $("#delPass", d).value });
+        d.close(); state.me = null; state.admin = false; renderChrome(); go("#/join"); toast("Your account was deleted.");
+      } catch (err) { $("#delErr", d).textContent = err.message; b.disabled = false; }
+    };
+  };
+
   $("#editForm").onsubmit = async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target), btn = e.target.querySelector("[type=submit]");
     const body = {
       full_name: fd.get("full_name"), role_title: fd.get("role_title"), school: fd.get("school"), school_id: fd.get("school_id"), city: fd.get("city"), country: fd.get("country"),
-      level: fd.get("level"), bio: fd.get("bio"), phone: fd.get("phone"),
+      level: fd.get("level"), bio: fd.get("bio"), phone: fd.get("phone"), email_notify: fd.get("email_notify") === "on",
       topics: fd.getAll("topics"), gives: fd.getAll("gives"), seeks: fd.getAll("seeks"),
       links: Object.fromEntries(Object.keys(LINK_NAMES).map((k) => [k, fd.get(`link-${k}`)])),
     };
@@ -910,6 +942,14 @@ async function board() {
     const t = e.target.closest("[data-act]"); if (!t) return;
     if (t.dataset.act === "orig") {
       const o = $(".orig", t.closest(".post")); o.hidden = !o.hidden; t.textContent = t.textContent.replace(o.hidden ? "Hide" : "Show", o.hidden ? "Show" : "Hide");
+    } else if (t.dataset.act === "report") {
+      const reason = await askReport();
+      if (reason === null) return;
+      try { await api("POST", `/api/board/${t.dataset.id}/report`, { reason }); toast("Thank you. The Yael Foundation team will take a look."); t.remove(); }
+      catch (err) { toast(err.message); }
+    } else if (t.dataset.act === "adminDel") {
+      if (!confirm("Remove this post for everyone?")) return;
+      try { await api("DELETE", `/api/admin/posts/${t.dataset.id}`); t.closest(".post").remove(); toast("Post removed."); } catch (err) { toast(err.message); }
     } else if (t.dataset.act === "del") {
       try { await api("DELETE", `/api/board/${t.dataset.id}`); t.closest(".post").remove(); toast("Post removed."); } catch (err) { toast(err.message); }
     } else if (t.dataset.act === "help") {
@@ -930,6 +970,24 @@ async function board() {
   });
 }
 
+/** Asks why a post is being reported. Resolves to the reason ("" is fine), or null if cancelled. */
+function askReport() {
+  return new Promise((resolve) => {
+    const d = document.createElement("dialog");
+    d.className = "panel-lg note-dialog";
+    d.innerHTML = `<form method="dialog" class="stack">
+      <h2 class="display" style="font-size:1.8rem">Report this post</h2>
+      <p class="muted small">Only the Yael Foundation team sees reports. The author isn't told who reported.</p>
+      <label class="field"><span>What's wrong? <span class="tiny">(optional)</span></span>
+        <textarea class="textarea" id="repWhy" maxlength="300" placeholder="Offensive, off-topic, private information, spam…"></textarea></label>
+      <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn btn-quiet" value="cancel">Cancel</button><button class="btn btn-primary" value="send">Send report</button></div>
+    </form>`;
+    d.addEventListener("close", () => { resolve(d.returnValue === "send" ? $("#repWhy", d).value : null); d.remove(); });
+    d.addEventListener("click", (e) => { if (e.target === d) d.close("cancel"); });
+    document.body.appendChild(d); d.showModal();
+  });
+}
+
 function postHTML(p, meId) {
   const a = p.author, mine = a.id === meId;
   return `<article class="post fade-in">
@@ -939,8 +997,171 @@ function postHTML(p, meId) {
     <div class="foot">
       ${mine ? `<button class="linkish" data-act="del" data-id="${esc(p.id)}">Delete</button>` : `<button class="btn btn-soft btn-sm" data-act="help" data-id="${esc(p.id)}">I can help</button>`}
       ${p.original ? `<button class="linkish" data-act="orig">Translated from ${LANGS[p.lang] || "another language"} · Show original</button>` : ""}
+      <span class="foot-end">${mine ? "" : `<button class="linkish quiet" data-act="report" data-id="${esc(p.id)}">Report</button>`}${state.admin && !mine ? `<button class="linkish quiet" data-act="adminDel" data-id="${esc(p.id)}">Remove</button>` : ""}</span>
     </div>
   </article>`;
+}
+
+// =============================================================
+// privacy policy & terms (public)
+// =============================================================
+function privacy() {
+  view.innerHTML = `
+  <div class="wrap legal fade-in">
+    <p class="label">Yael Summit</p>
+    <h1 class="display">Privacy & terms</h1>
+    <p class="muted">This site is run by the Yael Foundation for the principals of the schools it works with. It exists to help you meet each other before, during and after the summit. Here is what it keeps, who sees it, and what you can do about it.</p>
+
+    <h2>What we keep</h2>
+    <ul>
+      <li><b>Your account:</b> full name, email address and a password (stored only as a secure hash, never readable).</li>
+      <li><b>Your profile, if you fill it in:</b> role, school, city, country, school type, a short bio, the topics you choose, phone number, social links and a photo.</li>
+      <li><b>What you do on the site:</b> your connections and requests, your messages, your board posts, and reports you send.</li>
+      <li><b>One sign-in cookie</b> that keeps you signed in. No advertising or tracking cookies, and no analytics that follow you.</li>
+    </ul>
+
+    <h2>Who sees what</h2>
+    <ul>
+      <li><b>Every signed-in member</b> sees your name, photo, role, school, place, bio, topics and board posts.</li>
+      <li><b>Only your accepted connections</b> see your email, phone and links, and only they can message you.</li>
+      <li><b>Messages</b> are seen only by the two people in the conversation.</li>
+      <li><b>The Yael Foundation team</b> can see the member list (names, emails, schools), reported posts, and can fix or remove accounts and posts. The team does not read your private messages.</li>
+      <li>Nothing is public on the open internet, and nothing is sold or shared for marketing.</li>
+    </ul>
+
+    <h2>Services that help run the site</h2>
+    <ul>
+      <li><b>Cloudflare</b> hosts the site and stores its data.</li>
+      <li><b>Google Gemini</b> translates board posts written in other languages into English (once, when posted) and writes the optional "Why meet?" suggestion from two profiles. Only that text is sent.</li>
+      <li><b>Resend</b> sends the notification emails, if they're turned on.</li>
+    </ul>
+
+    <h2>Your choices</h2>
+    <ul>
+      <li>Edit or remove anything in your profile at any time, in <a href="#/me/edit">Edit profile</a>.</li>
+      <li>Turn notification emails off in Edit profile.</li>
+      <li>Delete your account in Edit profile. This removes your profile, photo, connections, conversations and posts for good.</li>
+      <li>Ask the Yael Foundation for a copy of your data, or with any question about it<span id="contactLine">.</span></li>
+    </ul>
+
+    <h2>Terms of use</h2>
+    <ul>
+      <li>Join under your real name, for the school you actually lead or work at.</li>
+      <li>Be respectful. This is a professional network of educators.</li>
+      <li>Don't post private information about students, families or staff.</li>
+      <li>Don't use the network for advertising or fundraising appeals without the foundation's agreement.</li>
+      <li>The Yael Foundation may remove posts or accounts that break these terms. Anyone can report a board post.</li>
+    </ul>
+    <p class="tiny">Last updated ${new Date(2026, 9, 1).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}.</p>
+    <p style="margin-top:18px"><a class="btn btn-soft btn-sm" href="${state.me ? "#/" : "#/join"}">← Back</a></p>
+  </div>`;
+  api("GET", "/api/stats").then((st) => {
+    if (st.contact && $("#contactLine")) $("#contactLine").innerHTML = ` at <a href="mailto:${esc(st.contact)}">${esc(st.contact)}</a>.`;
+  }).catch(() => {});
+}
+
+// =============================================================
+// admin (Yael Foundation team only)
+// =============================================================
+async function adminPage(tab = "members") {
+  let data, schools = [];
+  const ok = await load(async () => {
+    [data, { schools }] = await Promise.all([api("GET", "/api/admin"), api("GET", "/api/schools")]);
+    const c = data.counts;
+    return `
+    <div class="wrap section admin">
+      <div class="section-head"><div><p class="label">Yael Foundation</p><h2>Admin</h2></div>
+        <div class="seg" role="radiogroup" aria-label="Section">
+          <label><input type="radio" name="at" value="members" id="at-m" ${tab === "members" ? "checked" : ""}>Members</label>
+          <label><input type="radio" name="at" value="reports" id="at-r" ${tab === "reports" ? "checked" : ""}>Reports${c.reports ? ` (${c.reports})` : ""}</label>
+        </div></div>
+      <div class="stat-row" style="margin-bottom:18px">
+        <div class="stat"><b>${c.members}</b><span>members</span></div>
+        <div class="stat"><b>${c.schools_joined}/${c.schools}</b><span>schools joined</span></div>
+        <div class="stat"><b>${c.reports}</b><span>open reports</span></div>
+      </div>
+      <div id="adminBody"></div>
+    </div>`;
+  });
+  if (!ok) return;
+  const body = $("#adminBody"), byLabel = new Map(schools.map((x) => [`${x.name} — ${place(x)}`, x]));
+  const date = (t) => (t ? new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "never");
+
+  const members = (q = "") => {
+    const list = data.members.filter((m) => !q || [m.full_name, m.email, m.school, m.country].join(" ").toLowerCase().includes(q));
+    body.innerHTML = `<input class="input" id="amq" type="search" placeholder="Search name, email, school or country" value="${esc(q)}" style="max-width:360px;margin-bottom:14px">
+      ${list.length ? `<div class="stack">${list.map((m) => `<div class="req admin-row">
+        ${avatar(m, "sm")}
+        <div class="who"><a href="#/u/${esc(m.id)}">${esc(m.full_name)}</a>
+          <span class="tiny">${esc(m.email)}</span>
+          <span class="tiny">${esc([m.school || "No school yet", m.country].filter(Boolean).join(" · "))} ${m.school_id ? `<span class="chip gold" style="font-size:.68rem;padding:.1rem .5rem">from the list</span>` : m.school ? `<span class="chip plain" style="font-size:.68rem;padding:.1rem .5rem">typed in</span>` : ""}</span>
+          <span class="tiny">Joined ${date(m.created_at)} · last seen ${date(m.seen_at)} · ${m.connections} connections · ${m.posts} posts</span></div>
+        <div class="acts"><button class="btn btn-soft btn-sm" data-act="school" data-id="${esc(m.id)}">Change school</button><button class="btn btn-quiet btn-sm danger" data-act="remove" data-id="${esc(m.id)}">Remove</button></div>
+      </div>`).join("")}</div>` : `<div class="empty"><span>${q ? "Nobody matches that." : "No members yet."}</span></div>`}`;
+    const inp = $("#amq"); inp.oninput = () => { const v = inp.value; members(v.toLowerCase()); const n = $("#amq"); n.focus(); n.setSelectionRange(v.length, v.length); };
+  };
+
+  const reports = () => {
+    body.innerHTML = data.reports.length ? `<div class="stack">${data.reports.map((r) => `<div class="post">
+        <div class="head"><div class="who"><span><b>${esc(r.author)}</b> · ${KIND_NAMES[r.kind] || "Post"} · ${ago(r.posted_at)}</span><span>Reported by ${esc(r.reporter || "a member who has since left")} · ${ago(r.created_at)}</span></div></div>
+        <p class="text" dir="auto">${esc(r.text)}</p>
+        ${r.reason ? `<p class="orig">Reason: ${esc(r.reason)}</p>` : `<p class="tiny">No reason given.</p>`}
+        <div class="foot"><button class="btn btn-primary btn-sm danger-fill" data-act="delpost" data-id="${esc(r.post_id)}">Remove post</button><button class="btn btn-quiet btn-sm" data-act="dismiss" data-id="${esc(r.id)}">Keep it</button></div>
+      </div>`).join("")}</div>` : `<div class="empty"><b>No open reports.</b><span>When a member reports a board post, it shows up here.</span></div>`;
+  };
+
+  const show = (t) => (t === "reports" ? reports() : members());
+  $$("[name=at]").forEach((r) => (r.onchange = () => { tab = r.value; show(tab); }));
+  show(tab);
+
+  body.addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-act]"); if (!b) return;
+    const id = b.dataset.id, act = b.dataset.act;
+    try {
+      if (act === "remove") {
+        const m = data.members.find((x) => x.id === id);
+        if (!confirm(`Remove ${m.full_name}'s account? Their profile, connections, conversations and posts will be deleted for good.`)) return;
+        await api("DELETE", `/api/admin/members/${id}`); toast("Account removed.");
+      } else if (act === "school") {
+        const m = data.members.find((x) => x.id === id);
+        const choice = await pickSchool(m, byLabel);
+        if (choice === undefined) return;
+        await api("PUT", `/api/admin/members/${id}`, { school_id: choice }); toast(choice ? "School updated." : "School unlinked.");
+      } else if (act === "delpost") {
+        if (!confirm("Remove this post for everyone?")) return;
+        await api("DELETE", `/api/admin/posts/${id}`); toast("Post removed.");
+      } else if (act === "dismiss") {
+        await api("DELETE", `/api/admin/reports/${id}`); toast("Report closed. The post stays.");
+      } else return;
+      adminPage(tab);
+    } catch (err) { toast(err.message); }
+  });
+}
+
+/** Admin: choose another school for a member. Resolves to a school id, null to unlink, or undefined if cancelled. */
+function pickSchool(m, byLabel) {
+  return new Promise((resolve) => {
+    const d = document.createElement("dialog");
+    d.className = "panel-lg note-dialog";
+    d.innerHTML = `<form method="dialog" class="stack">
+      <h2 class="display" style="font-size:1.8rem">School for ${esc(first(m.full_name))}</h2>
+      <p class="muted small">Now: ${esc(m.school || "none")}${m.school_id ? " (from the list)" : m.school ? " (typed in)" : ""}</p>
+      <label class="field"><span>School</span><input class="input" id="psIn" list="psList" autocomplete="off" placeholder="Start typing a school's name"><datalist id="psList">${[...byLabel.keys()].map((l) => `<option value="${esc(l)}"></option>`).join("")}</datalist></label>
+      <p class="form-error" id="psErr" role="alert"></p>
+      <div style="display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap">
+        <button class="btn btn-quiet" value="unlink" ${m.school_id ? "" : "disabled"}>Unlink from the list</button>
+        <span style="display:flex;gap:8px"><button class="btn btn-quiet" value="cancel">Cancel</button><button class="btn btn-primary" value="save" id="psSave">Save</button></span>
+      </div>
+    </form>`;
+    let result;
+    $("#psSave", d).onclick = (e) => {
+      const x = byLabel.get($("#psIn", d).value);
+      if (!x) { e.preventDefault(); $("#psErr", d).textContent = "Choose a school from the list."; return; }
+      result = x.id;
+    };
+    d.addEventListener("close", () => { resolve(d.returnValue === "save" ? result : d.returnValue === "unlink" ? null : undefined); d.remove(); });
+    document.body.appendChild(d); d.showModal();
+  });
 }
 
 // =============================================================

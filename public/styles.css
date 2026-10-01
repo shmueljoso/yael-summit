@@ -465,3 +465,23 @@ button.chip { border: 0; cursor: pointer; font: inherit; font-size: .8rem; }
 .person.waiting:hover { background: var(--surface-soft); }
 .person.waiting .av { opacity: .55; }
 .person.waiting .who b { color: var(--mist); }
+
+/* ---------- checkboxes, privacy page, account deletion, reports, admin ---------- */
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: .9rem; color: var(--ivory); cursor: pointer; }
+.check input { width: 18px; height: 18px; margin: 2px 0 0; flex: none; accent-color: var(--royal); }
+.check a { color: var(--sky); text-decoration: underline; text-underline-offset: 2px; }
+.legal { max-width: 760px; padding-block: 34px 40px; display: grid; gap: 12px; }
+.legal h1 { font-size: clamp(2.2rem, 1.6rem + 2vw, 3rem); }
+.legal h2 { font-family: var(--f-display); font-size: 1.5rem; margin-top: 14px; }
+.legal ul { margin: 0; padding-left: 1.2rem; display: grid; gap: 8px; color: var(--mist); }
+.legal li b { color: var(--ivory); font-weight: 500; }
+.legal a { text-decoration: underline; text-underline-offset: 2px; }
+.btn.danger { color: var(--bad); }
+.btn.danger:hover { color: var(--bad); background: rgba(255, 143, 143, .1); }
+.btn.danger-fill { background: linear-gradient(135deg, #C2413E, #D85B4F); box-shadow: none; }
+.post .foot-end { margin-inline-start: auto; display: flex; gap: 12px; }
+.linkish.quiet { color: var(--mist-2); font-size: .78rem; }
+.linkish.quiet:hover { color: var(--ivory); }
+.admin-row .who { gap: 3px; }
+.admin-row .who .chip { vertical-align: 1px; }
+@media (max-width: 640px) { .admin-row .acts { width: 100%; } }

@@ -47,6 +47,9 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS schools (id TEXT PRIMARY KEY, name TEXT NOT NULL, city TEXT DEFAULT '', country TEXT DEFAULT '', level TEXT DEFAULT '')`,
   `CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT)`,
   `CREATE TABLE IF NOT EXISTS avatars (user_id TEXT PRIMARY KEY, type TEXT NOT NULL, data BLOB NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS reports (
+    id TEXT PRIMARY KEY, post_id TEXT NOT NULL, reporter_id TEXT NOT NULL, reason TEXT DEFAULT '',
+    created_at INTEGER NOT NULL, UNIQUE (post_id, reporter_id))`,
 ];
 
 // Columns added after launch. ALTER fails harmlessly when the column already exists.
@@ -55,6 +58,8 @@ const MIGRATIONS = [
   "ALTER TABLE users ADD COLUMN lat REAL",
   "ALTER TABLE users ADD COLUMN lng REAL",
   "ALTER TABLE users ADD COLUMN school_id TEXT",
+  "ALTER TABLE users ADD COLUMN consented_at INTEGER",
+  "ALTER TABLE users ADD COLUMN email_notify INTEGER DEFAULT 1",
 ];
 
 async function prepare(env) {
@@ -67,15 +72,36 @@ async function prepare(env) {
 
 /** The early demo had fictional principals (is_demo = 1). Remove them and everything they touched. */
 async function removeSampleContent(d) {
-  if (!(await d.prepare("SELECT 1 FROM users WHERE is_demo = 1 LIMIT 1").first())) return;
-  const demo = "(SELECT id FROM users WHERE is_demo = 1)";
+  const { results } = await d.prepare("SELECT id FROM users WHERE is_demo = 1").all();
+  for (const { id } of results) await deleteUserData(d, id);
+}
+
+/**
+ * Removes a member and everything tied to them: their conversations (both sides),
+ * connections, posts and the reports on them, reports they filed, photo, sessions and the account.
+ */
+export async function deleteUserData(d, id) {
   await d.batch([
-    d.prepare(`DELETE FROM messages WHERE from_id IN ${demo} OR to_id IN ${demo}`),
-    d.prepare(`DELETE FROM connections WHERE a IN ${demo} OR b IN ${demo}`),
-    d.prepare(`DELETE FROM posts WHERE user_id IN ${demo}`),
-    d.prepare(`DELETE FROM sessions WHERE user_id IN ${demo}`),
-    d.prepare("DELETE FROM users WHERE is_demo = 1"),
+    d.prepare("DELETE FROM messages WHERE from_id = ?1 OR to_id = ?1").bind(id),
+    d.prepare("DELETE FROM connections WHERE a = ?1 OR b = ?1").bind(id),
+    d.prepare("DELETE FROM reports WHERE reporter_id = ?1 OR post_id IN (SELECT id FROM posts WHERE user_id = ?1)").bind(id),
+    d.prepare("DELETE FROM posts WHERE user_id = ?").bind(id),
+    d.prepare("DELETE FROM avatars WHERE user_id = ?").bind(id),
+    d.prepare("DELETE FROM sessions WHERE user_id = ?").bind(id),
+    d.prepare("DELETE FROM users WHERE id = ?").bind(id),
   ]);
+}
+
+/** Foundation staff who can open the admin page: the ADMIN_EMAILS secret, comma-separated. */
+export function isAdmin(env, u) {
+  if (!u?.email) return false;
+  return String(env.ADMIN_EMAILS || "").toLowerCase().split(/[\s,;]+/).filter(Boolean).includes(u.email.toLowerCase());
+}
+
+export async function requireAdmin(env, request) {
+  const u = await requireUser(env, request);
+  if (!isAdmin(env, u)) throw Object.assign(new Error("admin_only"), { status: 403 });
+  return u;
 }
 
 /** Keeps the schools table equal to schools.js. Runs only when the list changed. */

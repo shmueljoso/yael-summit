@@ -1,6 +1,6 @@
 /** Profiles: your own (view/edit/photo), the directory, and other principals' pages. */
 import { json, error, clip, clipText, readJson } from "../lib/http.js";
-import { db, card, full, currentUser, requireUser, connectionBetween, TOPICS, LEVELS, LINK_KINDS } from "../lib/db.js";
+import { db, card, full, currentUser, requireUser, connectionBetween, isAdmin, deleteUserData, hashPassword, endSessionCookie, TOPICS, LEVELS, LINK_KINDS } from "../lib/db.js";
 import { locate } from "../lib/places.js";
 
 const topicList = (arr) => (Array.isArray(arr) ? [...new Set(arr.filter((t) => t in TOPICS))].slice(0, 5) : []);
@@ -21,7 +21,20 @@ export async function me({ request, env }) {
     d.prepare("SELECT COUNT(*) n FROM connections WHERE status = 'pending' AND requested_by != ? AND (a = ? OR b = ?)").bind(u.id, u.id, u.id).first(),
     d.prepare("SELECT COUNT(*) n FROM messages WHERE to_id = ? AND read_at IS NULL").bind(u.id).first(),
   ]);
-  return json({ me: full(u), counts: { requests: req?.n || 0, unread: unread?.n || 0 }, taxonomy: { topics: TOPICS, levels: LEVELS } });
+  return json({ me: mine(u), admin: isAdmin(env, u), counts: { requests: req?.n || 0, unread: unread?.n || 0 }, taxonomy: { topics: TOPICS, levels: LEVELS } });
+}
+
+/** Your own profile: everything, plus your settings. */
+const mine = (u) => ({ ...full(u), email_notify: u.email_notify !== 0 });
+
+/** DELETE /api/me { password } — delete your account and everything you created. */
+export async function deleteMe({ request, env }) {
+  const u = await requireUser(env, request);
+  const b = await readJson(request);
+  if ((await hashPassword(String(b.password || ""), u.salt)) !== u.pass_hash) return error(401, "bad_password", "That password isn't right.");
+  await deleteUserData(await db(env), u.id);
+  if (env.BOARD) await env.BOARD.delete(`avatar:${u.id}`).catch(() => {});
+  return json({ ok: true }, 200, { "set-cookie": endSessionCookie });
 }
 
 /** PUT /api/me — update your profile. Everything except the full name is optional. */
@@ -43,12 +56,13 @@ export async function updateMe({ request, env }) {
     level: b.level in LEVELS ? b.level : picked?.level || "", bio: clipText(b.bio, 800),
     topics: JSON.stringify(topicList(b.topics)), gives: JSON.stringify(topicList(b.gives)), seeks: JSON.stringify(topicList(b.seeks)),
     links: JSON.stringify(links), phone: clip(b.phone, 40),
+    email_notify: b.email_notify === false ? 0 : 1,
   };
   [vals.lat, vals.lng] = locate(vals.city, vals.country) || [null, null];
   const cols = Object.keys(vals);
   await d.prepare(`UPDATE users SET ${cols.map((c) => `${c} = ?`).join(", ")} WHERE id = ?`).bind(...cols.map((c) => vals[c]), u.id).run();
   const fresh = await d.prepare("SELECT * FROM users WHERE id = ?").bind(u.id).first();
-  return json({ me: full(fresh) });
+  return json({ me: mine(fresh) });
 }
 
 /**
@@ -70,7 +84,7 @@ export async function putAvatar({ request, env }) {
     d.prepare("UPDATE users SET avatar = avatar + 1 WHERE id = ?").bind(u.id),
   ]);
   const fresh = await d.prepare("SELECT * FROM users WHERE id = ?").bind(u.id).first();
-  return json({ me: full(fresh) });
+  return json({ me: mine(fresh) });
 }
 
 /** DELETE /api/me/avatar */
