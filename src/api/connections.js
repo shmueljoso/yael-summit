@@ -7,6 +7,16 @@ import { db, card, requireUser, connectionBetween, pairOf, TOPICS } from "../lib
 import { gemini, modelOf } from "../lib/gemini.js";
 import { locate } from "../lib/places.js";
 import { UNJOINED_SCHOOLS } from "./profile.js";
+import { sendMail, siteUrl } from "../lib/mail.js";
+
+const first = (name) => String(name || "").split(" ")[0];
+const schoolLine = (x) => [x.role_title, x.school, x.country].filter(Boolean).join(" · ");
+
+/** Emails a member about connection activity, if they haven't turned emails off. */
+function notify(env, request, waitUntil, to, mail) {
+  if (!to?.email || to.email_notify === 0) return;
+  waitUntil(sendMail(env, { to: to.email, url: siteUrl(request, mail.hash || "#/"), ...mail }));
+}
 
 const parse = (s) => { try { return JSON.parse(s); } catch { return []; } };
 const inter = (a, b) => a.filter((x) => b.includes(x));
@@ -70,19 +80,21 @@ export async function list({ request, env }) {
 }
 
 /** POST /api/connections { to, note } — ask to connect (accepts at once if they already asked you). */
-export async function request({ request, env }) {
+export async function request({ request, env, waitUntil }) {
   const u = await requireUser(env, request);
   if (await limited(env, `connect:${u.id}`, 20)) return error(429, "slow_down", "That's a lot of requests at once. Try again in a minute.");
   const b = await readJson(request);
   const to = clip(b.to, 40);
   if (!to || to === u.id) return error(400, "bad_target", "Choose someone to connect with.");
   const d = await db(env);
-  if (!(await d.prepare("SELECT 1 FROM users WHERE id = ?").bind(to).first())) return error(404, "not_found", "This principal wasn't found.");
+  const other = await d.prepare("SELECT * FROM users WHERE id = ?").bind(to).first();
+  if (!other) return error(404, "not_found", "This principal wasn't found.");
   const existing = await connectionBetween(d, u.id, to);
   const [a, bb] = pairOf(u.id, to);
   if (existing) {
     if (existing.status === "pending" && existing.requested_by !== u.id) {
       await d.prepare("UPDATE connections SET status = 'accepted', accepted_at = ? WHERE a = ? AND b = ?").bind(Date.now(), a, bb).run();
+      notify(env, request, waitUntil, other, accepted(u));
       return json({ connection: "connected" });
     }
     return json({ connection: existing.status === "accepted" ? "connected" : "sent" });
@@ -90,16 +102,30 @@ export async function request({ request, env }) {
   await d.prepare(
     "INSERT INTO connections (a, b, status, requested_by, note, created_at) VALUES (?, ?, 'pending', ?, ?, ?)"
   ).bind(a, bb, u.id, clip(b.note, 300), Date.now()).run();
+  notify(env, request, waitUntil, other, {
+    subject: `${u.full_name} wants to connect`,
+    heading: `${u.full_name} wants to connect with you`,
+    lines: [schoolLine(u) || "A principal in the Yael Summit network.", "Once you accept, you can see each other's details and message directly."],
+    quote: clip(b.note, 300), button: "See the request", hash: "#/",
+  });
   return json({ connection: "sent" }, 201);
 }
 
+const accepted = (u) => ({
+  subject: `${u.full_name} accepted your request`,
+  heading: `You're connected with ${u.full_name}`,
+  lines: [schoolLine(u) || "A principal in the Yael Summit network.", `You can now see ${first(u.full_name)}'s contact details and send a message.`],
+  button: `Message ${first(u.full_name)}`, hash: `#/messages/${u.id}`,
+});
+
 /** POST /api/connections/:id/accept */
-export async function accept({ request, env, params }) {
+export async function accept({ request, env, params, waitUntil }) {
   const u = await requireUser(env, request);
   const d = await db(env);
   const c = await connectionBetween(d, u.id, params.id);
   if (!c || c.status !== "pending" || c.requested_by === u.id) return error(404, "not_found", "There's no request to accept.");
   await d.prepare("UPDATE connections SET status = 'accepted', accepted_at = ? WHERE a = ? AND b = ?").bind(Date.now(), c.a, c.b).run();
+  notify(env, request, waitUntil, await d.prepare("SELECT * FROM users WHERE id = ?").bind(params.id).first(), accepted(u));
   return json({ connection: "connected" });
 }
 
@@ -170,5 +196,5 @@ export async function stats({ env }) {
     d.prepare("SELECT COUNT(DISTINCT c) n FROM (SELECT LOWER(TRIM(country)) c FROM users WHERE country != '' UNION SELECT LOWER(TRIM(country)) FROM schools WHERE country != '')").first(),
     d.prepare("SELECT COUNT(*) n FROM connections WHERE status = 'accepted'").first(),
   ]);
-  return json({ principals: u?.n || 0, schools: s?.n || 0, countries: c?.n || 0, connections: k?.n || 0 }, 200, { "cache-control": "public, max-age=60" });
+  return json({ principals: u?.n || 0, schools: s?.n || 0, countries: c?.n || 0, connections: k?.n || 0, contact: env.CONTACT_EMAIL || "" }, 200, { "cache-control": "public, max-age=60" });
 }

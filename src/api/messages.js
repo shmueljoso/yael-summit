@@ -1,6 +1,27 @@
 /** Direct messages. Only between principals who are connected. */
 import { json, error, clipText, readJson, limited } from "../lib/http.js";
 import { db, card, requireUser, connectionBetween, pairKey } from "../lib/db.js";
+import { sendMail, siteUrl } from "../lib/mail.js";
+
+const MAIL_GAP = 2 * 60 * 60; // at most one email per conversation every two hours
+const ONLINE = 6 * 60e3;      // seen this recently → they'll see it on the site, no email
+
+/** Emails the recipient about a new message, unless they're on the site, opted out, or were emailed recently. */
+async function notifyMessage(env, request, d, from, toId, body) {
+  const to = await d.prepare("SELECT * FROM users WHERE id = ?").bind(toId).first();
+  if (!to?.email || to.email_notify === 0 || Date.now() - (to.seen_at || 0) < ONLINE) return;
+  const key = `mailmsg:${pairKey(from.id, toId)}:${toId}`;
+  if (env.BOARD && (await env.BOARD.get(key))) return;
+  await env.BOARD?.put(key, "1", { expirationTtl: MAIL_GAP });
+  const first = from.full_name.split(" ")[0];
+  await sendMail(env, {
+    to: to.email, subject: `New message from ${from.full_name}`,
+    heading: `${first} sent you a message`,
+    lines: [[from.role_title, from.school].filter(Boolean).join(" · ") || "A principal in the Yael Summit network."],
+    quote: body.length > 280 ? `${body.slice(0, 280)}…` : body,
+    button: "Reply", url: siteUrl(request, `#/messages/${from.id}`),
+  });
+}
 
 /** GET /api/messages — your conversations, newest first, with unread counts. */
 export async function conversations({ request, env }) {
@@ -41,7 +62,7 @@ export async function thread({ request, env, params }) {
 }
 
 /** POST /api/messages/:id { body } */
-export async function send({ request, env, params }) {
+export async function send({ request, env, params, waitUntil }) {
   const u = await requireUser(env, request);
   if (await limited(env, `msg:${u.id}`, 30)) return error(429, "slow_down", "You're sending messages very fast. Wait a moment.");
   const b = await readJson(request);
@@ -53,5 +74,6 @@ export async function send({ request, env, params }) {
   const r = await d.prepare(
     "INSERT INTO messages (pair, from_id, to_id, body, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id, created_at"
   ).bind(pairKey(u.id, params.id), u.id, params.id, body, Date.now()).first();
+  waitUntil(notifyMessage(env, request, d, u, params.id, body).catch(() => {}));
   return json({ message: { id: r.id, mine: true, body, at: r.created_at } }, 201);
 }

@@ -8,6 +8,7 @@ import * as profile from "./api/profile.js";
 import * as conn from "./api/connections.js";
 import * as msg from "./api/messages.js";
 import * as board from "./api/board.js";
+import * as admin from "./api/admin.js";
 
 const ROUTES = [
   ["POST", "/api/auth/signup", auth.signup],
@@ -15,6 +16,7 @@ const ROUTES = [
   ["POST", "/api/auth/logout", auth.logout],
   ["GET", "/api/me", profile.me],
   ["PUT", "/api/me", profile.updateMe],
+  ["DELETE", "/api/me", profile.deleteMe],
   ["PUT", "/api/me/avatar", profile.putAvatar],
   ["DELETE", "/api/me/avatar", profile.deleteAvatar],
   ["GET", "/api/avatar/:id", profile.avatar],
@@ -35,12 +37,19 @@ const ROUTES = [
   ["GET", "/api/board", board.listPosts],
   ["POST", "/api/board", board.createPost],
   ["DELETE", "/api/board/:id", board.deletePost],
+  ["POST", "/api/board/:id/report", board.reportPost],
+  ["GET", "/api/admin", admin.overview],
+  ["PUT", "/api/admin/members/:id", admin.setSchool],
+  ["DELETE", "/api/admin/members/:id", admin.removeMember],
+  ["DELETE", "/api/admin/posts/:id", admin.removePost],
+  ["DELETE", "/api/admin/reports/:id", admin.dismissReport],
 ].map(([method, path, fn]) => [method, new RegExp(`^${path.replace(/:(\w+)/g, "(?<$1>[A-Za-z0-9_-]+)")}$`), fn]);
 
 const MESSAGES = {
   db_not_configured: "The database isn't connected yet.",
   ai_not_configured: "AI isn't connected yet (missing GEMINI_API_KEY).",
   signin_required: "Please sign in.",
+  admin_only: "This page is for the Yael Foundation team.",
 };
 
 export default {

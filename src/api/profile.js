@@ -1,6 +1,6 @@
 /** Profiles: your own (view/edit/photo), the directory, and other principals' pages. */
 import { json, error, clip, clipText, readJson } from "../lib/http.js";
-import { db, card, full, currentUser, requireUser, connectionBetween, TOPICS, LEVELS, LINK_KINDS } from "../lib/db.js";
+import { db, card, full, currentUser, requireUser, connectionBetween, isAdmin, deleteUserData, hashPassword, endSessionCookie, TOPICS, LEVELS, LINK_KINDS } from "../lib/db.js";
 import { locate } from "../lib/places.js";
 
 const topicList = (arr) => (Array.isArray(arr) ? [...new Set(arr.filter((t) => t in TOPICS))].slice(0, 5) : []);
@@ -21,7 +21,20 @@ export async function me({ request, env }) {
     d.prepare("SELECT COUNT(*) n FROM connections WHERE status = 'pending' AND requested_by != ? AND (a = ? OR b = ?)").bind(u.id, u.id, u.id).first(),
     d.prepare("SELECT COUNT(*) n FROM messages WHERE to_id = ? AND read_at IS NULL").bind(u.id).first(),
   ]);
-  return json({ me: full(u), counts: { requests: req?.n || 0, unread: unread?.n || 0 }, taxonomy: { topics: TOPICS, levels: LEVELS } });
+  return json({ me: mine(u), admin: isAdmin(env, u), counts: { requests: req?.n || 0, unread: unread?.n || 0 }, taxonomy: { topics: TOPICS, levels: LEVELS } });
+}
+
+/** Your own profile: everything, plus your settings. */
+const mine = (u) => ({ ...full(u), email_notify: u.email_notify !== 0 });
+
+/** DELETE /api/me { password } — delete your account and everything you created. */
+export async function deleteMe({ request, env }) {
+  const u = await requireUser(env, request);
+  const b = await readJson(request);
+  if ((await hashPassword(String(b.password || ""), u.salt)) !== u.pass_hash) return error(401, "bad_password", "That password isn't right.");
+  await deleteUserData(await db(env), u.id);
+  if (env.BOARD) await env.BOARD.delete(`avatar:${u.id}`).catch(() => {});
+  return json({ ok: true }, 200, { "set-cookie": endSessionCookie });
 }
 
 /** PUT /api/me — update your profile. Everything except the full name is optional. */
@@ -43,45 +56,65 @@ export async function updateMe({ request, env }) {
     level: b.level in LEVELS ? b.level : picked?.level || "", bio: clipText(b.bio, 800),
     topics: JSON.stringify(topicList(b.topics)), gives: JSON.stringify(topicList(b.gives)), seeks: JSON.stringify(topicList(b.seeks)),
     links: JSON.stringify(links), phone: clip(b.phone, 40),
+    email_notify: b.email_notify === false ? 0 : 1,
   };
   [vals.lat, vals.lng] = locate(vals.city, vals.country) || [null, null];
   const cols = Object.keys(vals);
   await d.prepare(`UPDATE users SET ${cols.map((c) => `${c} = ?`).join(", ")} WHERE id = ?`).bind(...cols.map((c) => vals[c]), u.id).run();
   const fresh = await d.prepare("SELECT * FROM users WHERE id = ?").bind(u.id).first();
-  return json({ me: full(fresh) });
+  return json({ me: mine(fresh) });
 }
+
+/**
+ * Profile photos live in D1 next to the profile, so every device sees the same photo
+ * the moment it's saved. (They used to be in KV, which other locations can see late.)
+ */
 
 /** PUT /api/me/avatar — body is a JPEG/PNG/WebP data URL, already resized in the browser. */
 export async function putAvatar({ request, env }) {
   const u = await requireUser(env, request);
-  if (!env.BOARD) return error(503, "storage_not_configured", "Photo storage isn't set up yet.");
   const b = await readJson(request, 400000);
   const m = String(b.image || "").match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
   if (!m) return error(400, "bad_image", "Upload a JPG, PNG or WebP image.");
   const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
   if (bytes.length > 250000) return error(413, "too_large", "That photo is too large. Try a smaller one.");
-  await env.BOARD.put(`avatar:${u.id}`, bytes, { metadata: { type: m[1] } });
   const d = await db(env);
-  await d.prepare("UPDATE users SET avatar = avatar + 1 WHERE id = ?").bind(u.id).run();
+  await d.batch([
+    d.prepare("INSERT INTO avatars (user_id, type, data) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET type = excluded.type, data = excluded.data").bind(u.id, m[1], bytes),
+    d.prepare("UPDATE users SET avatar = avatar + 1 WHERE id = ?").bind(u.id),
+  ]);
   const fresh = await d.prepare("SELECT * FROM users WHERE id = ?").bind(u.id).first();
-  return json({ me: full(fresh) });
+  return json({ me: mine(fresh) });
 }
 
 /** DELETE /api/me/avatar */
 export async function deleteAvatar({ request, env }) {
   const u = await requireUser(env, request);
-  if (env.BOARD) await env.BOARD.delete(`avatar:${u.id}`);
   const d = await db(env);
-  await d.prepare("UPDATE users SET avatar = 0 WHERE id = ?").bind(u.id).run();
+  await d.batch([
+    d.prepare("DELETE FROM avatars WHERE user_id = ?").bind(u.id),
+    d.prepare("UPDATE users SET avatar = 0 WHERE id = ?").bind(u.id),
+  ]);
+  if (env.BOARD) await env.BOARD.delete(`avatar:${u.id}`).catch(() => {});
   return json({ ok: true });
 }
 
 /** GET /api/avatar/:id — photos are only for signed-in principals. URLs are versioned, so cache hard. */
 export async function avatar({ request, env, params }) {
   await requireUser(env, request);
-  const { value, metadata } = (await env.BOARD?.getWithMetadata(`avatar:${params.id}`, "arrayBuffer")) || {};
-  if (!value) return new Response("Not found", { status: 404 });
-  return new Response(value, { headers: { "content-type": metadata?.type || "image/jpeg", "cache-control": "private, max-age=31536000, immutable" } });
+  const d = await db(env);
+  let row = await d.prepare("SELECT type, data FROM avatars WHERE user_id = ?").bind(params.id).first();
+  if (!row && env.BOARD) {
+    // A photo saved before the move to D1: copy it over once.
+    const { value, metadata } = (await env.BOARD.getWithMetadata(`avatar:${params.id}`, "arrayBuffer")) || {};
+    if (value) {
+      row = { type: metadata?.type || "image/jpeg", data: value };
+      await d.prepare("INSERT OR IGNORE INTO avatars (user_id, type, data) VALUES (?, ?, ?)").bind(params.id, row.type, new Uint8Array(value)).run();
+    }
+  }
+  if (!row) return new Response("Not found", { status: 404, headers: { "cache-control": "no-store" } });
+  const data = row.data instanceof ArrayBuffer ? row.data : new Uint8Array(row.data);
+  return new Response(data, { headers: { "content-type": row.type, "cache-control": "private, max-age=31536000, immutable" } });
 }
 
 /** GET /api/schools — every school in the network, for the school picker. Signed-in only. */
