@@ -46,6 +46,7 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS posts_time ON posts (created_at)`,
   `CREATE TABLE IF NOT EXISTS schools (id TEXT PRIMARY KEY, name TEXT NOT NULL, city TEXT DEFAULT '', country TEXT DEFAULT '', level TEXT DEFAULT '')`,
   `CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT)`,
+  `CREATE TABLE IF NOT EXISTS avatars (user_id TEXT PRIMARY KEY, type TEXT NOT NULL, data BLOB NOT NULL)`,
 ];
 
 // Columns added after launch. ALTER fails harmlessly when the column already exists.

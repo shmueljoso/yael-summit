@@ -32,8 +32,9 @@ const icon = (name, fill = false) =>
 const initials = (name) => String(name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 const AV_GRADS = [["#2E66F5", "#7A5CF0"], ["#1F8FB8", "#2E66F5"], ["#B8894A", "#E0B866"], ["#7A5CF0", "#C2629B"], ["#1E9E86", "#2E7BD6"], ["#C25B5B", "#E09A5B"], ["#4A5BD6", "#1FA3F2"], ["#8A6BE0", "#3E4FCF"]];
 const avStyle = (p) => { let h = 0; for (const c of String(p?.id || p?.full_name || p?.name || "")) h = (h * 31 + c.charCodeAt(0)) >>> 0; const [a, b] = AV_GRADS[h % AV_GRADS.length]; return `background:linear-gradient(135deg,${a},${b})`; };
+// If a photo can't load, the initials show instead of a broken image.
 const avatar = (p, size = "") =>
-  `<span class="av ${size}" style="${avStyle(p)}">${p?.avatar ? `<img src="${esc(p.avatar)}" alt="" loading="lazy">` : esc(initials(p?.full_name || p?.name))}</span>`;
+  `<span class="av ${size}" style="${avStyle(p)}" data-initials="${esc(initials(p?.full_name || p?.name))}">${p?.avatar ? `<img src="${esc(p.avatar)}" alt="" loading="lazy" onerror="this.parentNode.textContent=this.parentNode.dataset.initials">` : esc(initials(p?.full_name || p?.name))}</span>`;
 const first = (name) => String(name || "").split(" ")[0];
 const place = (p) => [p.city, p.country].filter(Boolean).join(", ");
 const where = (p) => [p.school, place(p)].filter(Boolean).join(" · ");
@@ -748,8 +749,13 @@ function editProfile() {
       const url = await resizeImage(file, 400);
       $("#photoPrev").innerHTML = `<span class="av xl"><img src="${url}" alt=""></span>`;
       const r = await api("PUT", "/api/me/avatar", { image: url });
-      state.me = r.me; renderChrome(); toast("Photo updated.");
-    } catch (err) { toast(err.message || "That photo couldn't be used. Try another one."); }
+      state.me = r.me; renderChrome(); toast("Photo saved.");
+    } catch (err) {
+      // Not saved: put back what's really on the profile, so the page never shows a photo the server doesn't have.
+      $("#photoPrev").innerHTML = avatar(state.me, "xl");
+      toast(err.message || "That photo couldn't be used. Try another one.");
+    }
+    e.target.value = "";
   };
   $("#photoDel")?.addEventListener("click", async () => {
     await api("DELETE", "/api/me/avatar").catch((err) => toast(err.message)); await refreshMe(); editProfile(); toast("Photo removed.");

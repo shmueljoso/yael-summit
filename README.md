@@ -36,7 +36,7 @@ wrangler.jsonc       הגדרות Cloudflare
 | מה | איפה | הערה |
 |---|---|---|
 | `DB` (D1) | `wrangler.jsonc` | משתמשים, חיבורים, הודעות, פוסטים. מסד `yael-summit`, המזהה קבוע בקובץ. הטבלאות נוצרות לבד בשימוש הראשון. |
-| `BOARD` (KV) | `wrangler.jsonc` | תמונות פרופיל, מטמון AI, הגבלות קצב |
+| `BOARD` (KV) | `wrangler.jsonc` | מטמון AI והגבלות קצב. תמונות פרופיל נשמרות ב-D1 (טבלת `avatars`); תמונות ישנות מ-KV מועתקות לשם אוטומטית. |
 | `GEMINI_API_KEY` | Settings → Variables and Secrets (Secret) | תרגום בלוח ו"Why meet?" |
 | `SIGNUP_CODE` | Settings → Variables and Secrets (Secret), **לא חובה** | אם מוגדר, צריך את הקוד כדי להירשם. לשים אותו בהזמנה למנהלים. |
 

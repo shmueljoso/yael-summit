@@ -51,18 +51,24 @@ export async function updateMe({ request, env }) {
   return json({ me: full(fresh) });
 }
 
+/**
+ * Profile photos live in D1 next to the profile, so every device sees the same photo
+ * the moment it's saved. (They used to be in KV, which other locations can see late.)
+ */
+
 /** PUT /api/me/avatar — body is a JPEG/PNG/WebP data URL, already resized in the browser. */
 export async function putAvatar({ request, env }) {
   const u = await requireUser(env, request);
-  if (!env.BOARD) return error(503, "storage_not_configured", "Photo storage isn't set up yet.");
   const b = await readJson(request, 400000);
   const m = String(b.image || "").match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
   if (!m) return error(400, "bad_image", "Upload a JPG, PNG or WebP image.");
   const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
   if (bytes.length > 250000) return error(413, "too_large", "That photo is too large. Try a smaller one.");
-  await env.BOARD.put(`avatar:${u.id}`, bytes, { metadata: { type: m[1] } });
   const d = await db(env);
-  await d.prepare("UPDATE users SET avatar = avatar + 1 WHERE id = ?").bind(u.id).run();
+  await d.batch([
+    d.prepare("INSERT INTO avatars (user_id, type, data) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET type = excluded.type, data = excluded.data").bind(u.id, m[1], bytes),
+    d.prepare("UPDATE users SET avatar = avatar + 1 WHERE id = ?").bind(u.id),
+  ]);
   const fresh = await d.prepare("SELECT * FROM users WHERE id = ?").bind(u.id).first();
   return json({ me: full(fresh) });
 }
@@ -70,18 +76,31 @@ export async function putAvatar({ request, env }) {
 /** DELETE /api/me/avatar */
 export async function deleteAvatar({ request, env }) {
   const u = await requireUser(env, request);
-  if (env.BOARD) await env.BOARD.delete(`avatar:${u.id}`);
   const d = await db(env);
-  await d.prepare("UPDATE users SET avatar = 0 WHERE id = ?").bind(u.id).run();
+  await d.batch([
+    d.prepare("DELETE FROM avatars WHERE user_id = ?").bind(u.id),
+    d.prepare("UPDATE users SET avatar = 0 WHERE id = ?").bind(u.id),
+  ]);
+  if (env.BOARD) await env.BOARD.delete(`avatar:${u.id}`).catch(() => {});
   return json({ ok: true });
 }
 
 /** GET /api/avatar/:id — photos are only for signed-in principals. URLs are versioned, so cache hard. */
 export async function avatar({ request, env, params }) {
   await requireUser(env, request);
-  const { value, metadata } = (await env.BOARD?.getWithMetadata(`avatar:${params.id}`, "arrayBuffer")) || {};
-  if (!value) return new Response("Not found", { status: 404 });
-  return new Response(value, { headers: { "content-type": metadata?.type || "image/jpeg", "cache-control": "private, max-age=31536000, immutable" } });
+  const d = await db(env);
+  let row = await d.prepare("SELECT type, data FROM avatars WHERE user_id = ?").bind(params.id).first();
+  if (!row && env.BOARD) {
+    // A photo saved before the move to D1: copy it over once.
+    const { value, metadata } = (await env.BOARD.getWithMetadata(`avatar:${params.id}`, "arrayBuffer")) || {};
+    if (value) {
+      row = { type: metadata?.type || "image/jpeg", data: value };
+      await d.prepare("INSERT OR IGNORE INTO avatars (user_id, type, data) VALUES (?, ?, ?)").bind(params.id, row.type, new Uint8Array(value)).run();
+    }
+  }
+  if (!row) return new Response("Not found", { status: 404, headers: { "cache-control": "no-store" } });
+  const data = row.data instanceof ArrayBuffer ? row.data : new Uint8Array(row.data);
+  return new Response(data, { headers: { "content-type": row.type, "cache-control": "private, max-age=31536000, immutable" } });
 }
 
 /** GET /api/schools — every school in the network, for the school picker. Signed-in only. */
