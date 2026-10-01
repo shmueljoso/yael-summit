@@ -32,15 +32,19 @@ export async function updateMe({ request, env }) {
   if (full_name.split(" ").filter(Boolean).length < 2) return error(400, "full_name", "Please keep your full name (first and last).");
   const links = {};
   for (const k of LINK_KINDS) { const v = cleanLink(b.links?.[k]); if (v) links[k] = v; }
+  const d = await db(env);
+  // Picking a school from the list fixes its name and place; otherwise the typed values are used.
+  const picked = b.school_id ? await d.prepare("SELECT * FROM schools WHERE id = ?").bind(clip(b.school_id, 60)).first() : null;
   const vals = {
     full_name,
-    role_title: clip(b.role_title, 80), school: clip(b.school, 100), city: clip(b.city, 60), country: clip(b.country, 60),
-    level: b.level in LEVELS ? b.level : "", bio: clipText(b.bio, 800),
+    role_title: clip(b.role_title, 80),
+    school: picked ? picked.name : clip(b.school, 100), city: picked ? picked.city : clip(b.city, 60), country: picked ? picked.country : clip(b.country, 60),
+    school_id: picked ? picked.id : null,
+    level: b.level in LEVELS ? b.level : picked?.level || "", bio: clipText(b.bio, 800),
     topics: JSON.stringify(topicList(b.topics)), gives: JSON.stringify(topicList(b.gives)), seeks: JSON.stringify(topicList(b.seeks)),
     links: JSON.stringify(links), phone: clip(b.phone, 40),
   };
   [vals.lat, vals.lng] = locate(vals.city, vals.country) || [null, null];
-  const d = await db(env);
   const cols = Object.keys(vals);
   await d.prepare(`UPDATE users SET ${cols.map((c) => `${c} = ?`).join(", ")} WHERE id = ?`).bind(...cols.map((c) => vals[c]), u.id).run();
   const fresh = await d.prepare("SELECT * FROM users WHERE id = ?").bind(u.id).first();
@@ -80,23 +84,38 @@ export async function avatar({ request, env, params }) {
   return new Response(value, { headers: { "content-type": metadata?.type || "image/jpeg", "cache-control": "private, max-age=31536000, immutable" } });
 }
 
-/** GET /api/people?q=&topic= — the directory, with your connection status to each person. */
+/** GET /api/schools — every school in the network, for the school picker. Signed-in only. */
+export async function schools({ request, env }) {
+  await requireUser(env, request);
+  const d = await db(env);
+  const { results } = await d.prepare("SELECT id, name, city, country, level FROM schools ORDER BY name COLLATE NOCASE").all();
+  return json({ schools: results });
+}
+
+/** Schools in the list whose principal hasn't joined yet. */
+export const UNJOINED_SCHOOLS = "SELECT s.* FROM schools s WHERE NOT EXISTS (SELECT 1 FROM users u WHERE u.school_id = s.id) ORDER BY s.country, s.city, s.name";
+
+/** GET /api/people?q=&topic= — the directory, with your connection status to each person, plus schools not on it yet. */
 export async function people({ request, env }) {
   const u = await requireUser(env, request);
   const url = new URL(request.url);
   const q = clip(url.searchParams.get("q"), 60).toLowerCase();
   const topic = url.searchParams.get("topic");
   const d = await db(env);
-  const [{ results: users }, { results: conns }] = await Promise.all([
+  const [{ results: users }, { results: conns }, { results: waiting }] = await Promise.all([
     d.prepare("SELECT * FROM users WHERE id != ? ORDER BY created_at DESC LIMIT 1000").bind(u.id).all(),
     d.prepare("SELECT * FROM connections WHERE a = ? OR b = ?").bind(u.id, u.id).all(),
+    d.prepare(UNJOINED_SCHOOLS).all(),
   ]);
   const status = new Map(conns.map((c) => [c.a === u.id ? c.b : c.a, c.status === "accepted" ? "connected" : c.requested_by === u.id ? "sent" : "received"]));
   const list = users
     .map((x) => ({ ...card(x), connection: status.get(x.id) || null }))
     .filter((p) => !topic || p.topics.includes(topic))
     .filter((p) => !q || [p.full_name, p.school, p.city, p.country].join(" ").toLowerCase().includes(q));
-  return json({ people: list });
+  const schoolsLeft = topic ? [] : waiting
+    .map((s) => ({ id: s.id, name: s.name, city: s.city, country: s.country, level: s.level }))
+    .filter((s) => !q || [s.name, s.city, s.country].join(" ").toLowerCase().includes(q));
+  return json({ people: list, schools: schoolsLeft });
 }
 
 /** GET /api/people/:id — a profile page. Contact details only when connected (or yourself). */

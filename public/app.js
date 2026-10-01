@@ -32,7 +32,6 @@ const icon = (name, fill = false) =>
 const initials = (name) => String(name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 const AV_GRADS = [["#2E66F5", "#7A5CF0"], ["#1F8FB8", "#2E66F5"], ["#B8894A", "#E0B866"], ["#7A5CF0", "#C2629B"], ["#1E9E86", "#2E7BD6"], ["#C25B5B", "#E09A5B"], ["#4A5BD6", "#1FA3F2"], ["#8A6BE0", "#3E4FCF"]];
 const avStyle = (p) => { let h = 0; for (const c of String(p?.id || p?.full_name || p?.name || "")) h = (h * 31 + c.charCodeAt(0)) >>> 0; const [a, b] = AV_GRADS[h % AV_GRADS.length]; return `background:linear-gradient(135deg,${a},${b})`; };
-const sampleTag = (p) => (p?.sample ? `<span class="sample-tag" title="Sample profile for demonstration">Sample</span>` : "");
 const avatar = (p, size = "") =>
   `<span class="av ${size}" style="${avStyle(p)}">${p?.avatar ? `<img src="${esc(p.avatar)}" alt="" loading="lazy">` : esc(initials(p?.full_name || p?.name))}</span>`;
 const first = (name) => String(name || "").split(" ")[0];
@@ -354,8 +353,8 @@ function landing(mode) {
   </div>`;
   sky($("#sky"));
   api("GET", "/api/stats").then((st) => {
-    const box = $("#landStats"); if (!box || !st.principals) return;
-    box.innerHTML = `<div><b>${st.principals}</b><span>principals</span></div><div><b>${st.countries}</b><span>countries</span></div><div><b>${st.connections}</b><span>connections</span></div>`;
+    const box = $("#landStats"); if (!box || !(st.schools || st.principals)) return;
+    box.innerHTML = `<div><b>${st.schools}</b><span>schools</span></div><div><b>${st.countries}</b><span>countries</span></div>${st.principals ? `<div><b>${st.principals}</b><span>principals joined</span></div>` : ""}`;
     box.hidden = false;
   }).catch(() => {});
   $$("[data-to]").forEach((b) => (b.onclick = () => go(`#/${b.dataset.to}`)));
@@ -369,7 +368,7 @@ function landing(mode) {
       await api("POST", join ? "/api/auth/signup" : "/api/auth/login", f);
       await refreshMe();
       go(join ? "#/me/edit" : "#/");
-      if (join) toast("Welcome! Tell other principals a little about you.");
+      if (join) toast("Welcome! Start by choosing your school.");
     } catch (ex) { err.textContent = ex.message; btn.disabled = false; }
   };
 }
@@ -431,7 +430,7 @@ async function home() {
 
 function suggCard(p) {
   return `<article class="sugg">
-    <div class="top">${avatar(p, "lg")}<div class="who"><a href="#/u/${esc(p.id)}">${esc(p.full_name)}</a> ${sampleTag(p)}<span class="where">${esc(where(p) || "Principal")}</span></div>
+    <div class="top">${avatar(p, "lg")}<div class="who"><a href="#/u/${esc(p.id)}">${esc(p.full_name)}</a><span class="where">${esc(where(p) || "Principal")}</span></div>
       <div class="ring" style="--p:${p.match}" title="${p.match}% match"><span>${p.match}%</span></div></div>
     <p class="why">${esc(p.reason)}</p>
     <p class="opener" hidden></p>
@@ -477,11 +476,13 @@ function people(mode) {
   const token = routeToken, body = $("#pbody");
   async function refresh() {
     try {
-      const { people } = await api("GET", `/api/people?${new URLSearchParams({ q, topic })}`);
+      const { people, schools } = await api("GET", `/api/people?${new URLSearchParams({ q, topic })}`);
       if (token !== routeToken) return;
-      body.innerHTML = people.length
-        ? `<div class="cards">${people.map((p) => `<a class="person" href="#/u/${esc(p.id)}">${avatar(p, "lg")}<span class="who"><b>${esc(p.full_name)} ${sampleTag(p)}</b><span>${esc(p.role_title || "Principal")}</span><span>${esc(where(p))}</span></span>${p.connection ? `<span class="state ${p.connection}">${{ connected: "Connected", sent: "Requested", received: "Wants to connect" }[p.connection]}</span>` : ""}</a>`).join("")}</div>`
-        : `<div class="empty"><span>${q || topic ? "No principals match that yet." : "No other principals have joined yet."}</span></div>`;
+      const waiting = schools.length ? `<div class="section-head" style="margin-top:28px"><h2 style="font-size:1.5rem">Schools not on the network yet</h2><span class="tiny">${schools.length} school${schools.length === 1 ? "" : "s"} · their principals haven't joined yet</span></div>
+        <div class="cards">${schools.map((x) => `<div class="person waiting">${avatar({ id: x.id, full_name: x.name }, "lg")}<span class="who"><b>${esc(x.name)}</b><span>${esc(state.levels[x.level] || "")}</span><span>${esc(place(x))}</span></span></div>`).join("")}</div>` : "";
+      body.innerHTML = (people.length
+        ? `<div class="cards">${people.map((p) => `<a class="person" href="#/u/${esc(p.id)}">${avatar(p, "lg")}<span class="who"><b>${esc(p.full_name)}</b><span>${esc(p.role_title || "Principal")}</span><span>${esc(where(p))}</span></span>${p.connection ? `<span class="state ${p.connection}">${{ connected: "Connected", sent: "Requested", received: "Wants to connect" }[p.connection]}</span>` : ""}</a>`).join("")}</div>`
+        : `<div class="empty"><span>${q || topic ? "No principals match that yet." : "No other principals have joined yet."}</span></div>`) + waiting;
     } catch (e) { body.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
   }
   let t; $("#pq").oninput = (e) => { clearTimeout(t); t = setTimeout(() => { q = e.target.value.trim(); refresh(); }, 250); };
@@ -492,7 +493,7 @@ function people(mode) {
 // Map colors: what they mean, and which group is highlighted.
 const TOPIC_COLORS = ["#8DB8FF", "#F1D591", "#7FDDB0", "#E78FB3", "#B39CFF", "#6FD3E8", "#F2A66B", "#A8E26B", "#FF9F9F", "#5FA8FF", "#E6A8FF", "#FFD36B"];
 const LEVEL_COLORS = { early: "#FF9F9F", elem: "#F1D591", mid: "#7FDDB0", high: "#8DB8FF", k12: "#B39CFF", supp: "#F2A66B", other: "#A9B3D6" };
-const mapStyle = { by: (() => { try { return localStorage.getItem("mapBy") || "topic"; } catch { return "topic"; } })(), filter: "", changed: null };
+const mapStyle = { by: (() => { try { return localStorage.getItem("mapBy") || "level"; } catch { return "topic"; } })(), filter: "", changed: null };
 const groupOf = (n) => (mapStyle.by === "level" ? n.level || "" : n.topics[0] || "");
 function groups() {
   if (mapStyle.by === "level") return Object.entries(state.levels).map(([k, v]) => [k, v, LEVEL_COLORS[k] || "#A9B3D6"]);
@@ -508,8 +509,8 @@ function mapControls(box, nodes) {
   box.innerHTML = `
     <div class="colorby"><span class="tiny">Color by</span>
       <div class="seg" role="radiogroup" aria-label="Color by">
-        <label><input type="radio" name="cb" value="topic" id="cb-topic" ${mapStyle.by === "topic" ? "checked" : ""}>Main topic</label>
         <label><input type="radio" name="cb" value="level" id="cb-level" ${mapStyle.by === "level" ? "checked" : ""}>School type</label>
+        <label><input type="radio" name="cb" value="topic" id="cb-topic" ${mapStyle.by === "topic" ? "checked" : ""}>Main topic</label>
       </div></div>
     <div class="chips legend" role="group" aria-label="Highlight a group">
       <button class="chip ${mapStyle.filter ? "plain" : "gold"}" data-group="">All</button>
@@ -532,8 +533,9 @@ async function constellationMap(onFilterReady) {
   let data;
   try { data = await api("GET", "/api/map"); } catch (e) { body.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
   if (token !== routeToken) return;
-  body.innerHTML = `<div class="map-wrap"><canvas id="mapCv" role="img" aria-label="Map of all principals and their connections"></canvas>
-    <div class="map-legend"><span><i style="background:var(--gold)"></i>your connections</span><span><i style="background:var(--sky)"></i>other connections</span><span>${data.nodes.length} principals · ${data.edges.length} connections</span></div>
+  const joined = data.nodes.filter((n) => !n.waiting).length, waiting = data.nodes.length - joined;
+  body.innerHTML = `<div class="map-wrap"><canvas id="mapCv" role="img" aria-label="Map of the schools in the network, the principals who joined, and their connections"></canvas>
+    <div class="map-legend"><span><i style="background:var(--gold)"></i>your connections</span><span><i style="background:var(--sky)"></i>other connections</span><span>${joined} principal${joined === 1 ? "" : "s"} joined${waiting ? ` · ${waiting} schools waiting` : ""}</span></div>
     <div class="map-tip" id="mapTip" hidden></div></div>`;
   const cv = $("#mapCv"), tip = $("#mapTip");
   onFilterReady(data.nodes);
@@ -543,10 +545,13 @@ async function constellationMap(onFilterReady) {
   const layout = () => {
     g = fit(cv);
     const r = seeded(99), keys = groups().map(([k]) => k).filter((k) => data.nodes.some((n) => groupOf(n) === k));
+    const size = new Map(); for (const n of data.nodes) size.set(groupOf(n), (size.get(groupOf(n)) || 0) + 1);
     nodes = data.nodes.map((n) => {
       const gi = keys.indexOf(groupOf(n)), center = n.id === data.me;
-      const a = gi < 0 ? r() * Math.PI * 2 : (gi / Math.max(1, keys.length)) * Math.PI * 2 - Math.PI / 2, rr = gi < 0 ? .12 : .3;
-      return { ...n, x: center ? .5 : .5 + Math.cos(a) * rr + (r() - .5) * .16, y: center ? .5 : .5 + Math.sin(a) * (rr + .02) + (r() - .5) * .16, c: colorOf(n), t: r() * 6 };
+      // Grouped stars cluster on a ring (bigger groups spread wider); ungrouped ones drift around the edge.
+      const a = gi < 0 ? r() * Math.PI * 2 : (gi / Math.max(1, keys.length)) * Math.PI * 2 - Math.PI / 2;
+      const rr = gi < 0 ? .4 + r() * .06 : .3, spread = gi < 0 ? .04 : Math.min(.3, .1 + .02 * Math.sqrt(size.get(groupOf(n)) || 1));
+      return { ...n, x: center ? .5 : .5 + Math.cos(a) * rr + (r() - .5) * spread, y: center ? .5 : .5 + Math.sin(a) * (rr + .02) + (r() - .5) * spread, c: colorOf(n), t: r() * 6 };
     });
     // group names placed just outside each cluster
     const all = groups();
@@ -554,9 +559,10 @@ async function constellationMap(onFilterReady) {
       const a = (gi / Math.max(1, keys.length)) * Math.PI * 2 - Math.PI / 2, [, name, color] = all.find(([kk]) => kk === k);
       return { k, name, color, x: .5 + Math.cos(a) * .44, y: .5 + Math.sin(a) * .44 };
     });
+    const gap = Math.min(.06, .5 / Math.sqrt(nodes.length || 1));
     for (let it = 0; it < 120; it++) for (const n of nodes) {
       if (n.id === data.me) continue;
-      for (const m of nodes) { if (m === n) continue; const dx = n.x - m.x, dy = n.y - m.y, d = Math.hypot(dx, dy) || .001; if (d < .06) { n.x += (dx / d) * (.06 - d) * .3; n.y += (dy / d) * (.06 - d) * .3; } }
+      for (const m of nodes) { if (m === n) continue; const dx = n.x - m.x, dy = n.y - m.y, d = Math.hypot(dx, dy) || .001; if (d < gap) { n.x += (dx / d) * (gap - d) * .3; n.y += (dy / d) * (gap - d) * .3; } }
       n.x = Math.min(.95, Math.max(.05, n.x)); n.y = Math.min(.93, Math.max(.07, n.y));
     }
     byId = new Map(nodes.map((n) => [n.id, n]));
@@ -587,11 +593,13 @@ async function constellationMap(onFilterReady) {
       c.strokeStyle = isMine ? "rgba(241,213,145,.75)" : on(A) && on(B) ? "rgba(141,184,255,.28)" : "rgba(141,184,255,.06)";
       c.lineWidth = isMine ? 1.5 : .8; c.beginPath(); c.moveTo(...P(A)); c.lineTo(...P(B)); c.stroke();
     }
+    const base = nodes.length > 80 ? 3.6 : 4.5;
     for (const n of nodes) {
       const [x, y] = P(n), me = n.id === data.me, tw = reduceMotion ? 1 : .75 + .25 * Math.sin(k * 1.3 + n.t);
-      const rad = me ? 8 : n === hover ? 7 : mine.has(n.id) ? 5.5 : 4.5;
-      c.globalAlpha = on(n) || me ? tw : .15;
-      c.fillStyle = me ? "#F1D591" : n.c; c.shadowColor = c.fillStyle; c.shadowBlur = me || n === hover ? 18 : 8;
+      // Schools whose principal hasn't joined yet are fainter, smaller stars.
+      const rad = me ? 8 : n === hover ? 7 : n.waiting ? base * .8 : mine.has(n.id) ? base + 1 : base;
+      c.globalAlpha = (on(n) || me ? tw : .15) * (n.waiting && n !== hover ? .7 : 1);
+      c.fillStyle = me ? "#F1D591" : n.c; c.shadowColor = c.fillStyle; c.shadowBlur = me || n === hover ? 18 : n.waiting ? 0 : 8;
       c.beginPath(); c.arc(x, y, rad, 0, 7); c.fill(); c.shadowBlur = 0; c.globalAlpha = 1;
       if (me || n === hover) { c.fillStyle = "#F2F0EA"; c.font = "500 12px DM Sans, sans-serif"; c.textAlign = "center"; c.fillText(me ? "You" : n.name, x, y - rad - 8); }
     }
@@ -599,10 +607,11 @@ async function constellationMap(onFilterReady) {
   const pick = (e) => { const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top; let best = null, bd = 20; for (const n of nodes) { const d = Math.hypot(n.x * g.w - x, n.y * g.h - y); if (d < bd) { bd = d; best = n; } } return best; };
   const show = (n) => {
     hover = n; tip.hidden = !n;
-    if (n) tip.innerHTML = `${avatar({ id: n.id, avatar: n.avatar, full_name: n.name }, "sm")}<div><b>${esc(n.name)}</b> ${sampleTag(n)}<div class="tiny">${esc([n.school, n.country].filter(Boolean).join(" · "))}</div></div><a class="btn btn-soft btn-sm" href="#/u/${esc(n.id)}">View</a>`;
+    if (n?.waiting) tip.innerHTML = `${avatar({ id: n.id, full_name: n.name }, "sm")}<div><b>${esc(n.name)}</b><div class="tiny">${esc(place(n))} · Principal not on the network yet</div></div>`;
+    else if (n) tip.innerHTML = `${avatar({ id: n.id, avatar: n.avatar, full_name: n.name }, "sm")}<div><b>${esc(n.name)}</b><div class="tiny">${esc([n.school, n.country].filter(Boolean).join(" · "))}</div></div><a class="btn btn-soft btn-sm" href="#/u/${esc(n.id)}">View</a>`;
   };
   cv.onpointermove = (e) => { if (e.pointerType !== "mouse") return; const n = pick(e); if (n !== hover) show(n); };
-  cv.onclick = (e) => { const n = pick(e); if (n && n === hover && e.pointerType === "mouse") go(`#/u/${n.id}`); else show(n); };
+  cv.onclick = (e) => { const n = pick(e); if (n && !n.waiting && n === hover && e.pointerType === "mouse") go(`#/u/${n.id}`); else show(n); };
 }
 
 // =============================================================
@@ -624,7 +633,7 @@ async function profile(id) {
       <div class="prof-head">
         ${avatar(p, "xl")}
         <div class="id">
-          <h1 class="display">${esc(p.full_name)}</h1>${p.sample ? `<p>${sampleTag(p)} <span class="tiny">A sample profile, here to show how the network works.</span></p>` : ""}
+          <h1 class="display">${esc(p.full_name)}</h1>
           <p class="role">${esc([p.role_title, p.school].filter(Boolean).join(" · ") || "Principal")}</p>
           <div class="loc">${place(p) ? `<span>${esc(place(p))}</span>` : ""}${p.level ? `<span>${esc(state.levels[p.level] || "")}</span>` : ""}<span><b style="color:var(--gold-ink)">${p.connections}</b> connection${p.connections === 1 ? "" : "s"}</span></div>
         </div>
@@ -680,8 +689,10 @@ function editProfile() {
           <div><p class="label">Your profile</p><h2 class="display" style="font-size:2rem;margin-top:6px">How other principals will see you</h2></div>
           <label class="field"><span>Full name</span><input class="input" name="full_name" id="e-name" value="${esc(me.full_name)}" required></label>
           <div class="grid-2">
+            <label class="field"><span>School</span><input class="input" name="school" id="e-school" value="${esc(me.school)}" list="schoolList" autocomplete="off" placeholder="Start typing your school's name">
+              <input type="hidden" name="school_id" id="e-school-id" value="${esc(me.school_id || "")}"><datalist id="schoolList"></datalist>
+              <span class="hint" id="schoolHint">Pick your school from the list. Not listed? Just type its name.</span></label>
             <label class="field"><span>Role</span><input class="input" name="role_title" id="e-role" value="${esc(me.role_title)}" placeholder="Head of School"></label>
-            <label class="field"><span>School</span><input class="input" name="school" id="e-school" value="${esc(me.school)}" placeholder="Herzl Jewish Day School"></label>
             <label class="field"><span>City</span><input class="input" name="city" id="e-city" value="${esc(me.city)}"></label>
             <label class="field"><span>Country</span><input class="input" name="country" id="e-country" value="${esc(me.country)}"></label>
           </div>
@@ -705,6 +716,24 @@ function editProfile() {
       </div>
     </form>
   </div>`;
+
+  // School picker: choosing a school from the network fills in its city, country and type.
+  const sIn = $("#e-school"), sId = $("#e-school-id"), opts = new Map();
+  const label = (x) => `${x.name} — ${place(x)}`;
+  const syncSchool = () => {
+    const x = opts.get(sIn.value) || [...opts.values()].find((o) => o.name === sIn.value && o.id === sId.value);
+    if (x && sIn.value !== x.name) sIn.value = x.name;
+    sId.value = x ? x.id : "";
+    for (const [id, v] of [["#e-city", x?.city], ["#e-country", x?.country]]) { const el = $(id); if (x) el.value = v; el.readOnly = !!x; }
+    if (x && x.level && !$("#e-level").value) $("#e-level").value = x.level;
+    $("#schoolHint").textContent = x ? `From the Yael Foundation network · ${place(x)}` : "Pick your school from the list. Not listed? Just type its name.";
+  };
+  api("GET", "/api/schools").then(({ schools }) => {
+    for (const x of schools) opts.set(label(x), x);
+    $("#schoolList").innerHTML = schools.map((x) => `<option value="${esc(label(x))}"></option>`).join("");
+    syncSchool();
+  }).catch(() => {});
+  sIn.addEventListener("input", syncSchool);
 
   $$(".pick").forEach((box) => {
     const max = Number(box.dataset.max);
@@ -730,7 +759,7 @@ function editProfile() {
     e.preventDefault();
     const fd = new FormData(e.target), btn = e.target.querySelector("[type=submit]");
     const body = {
-      full_name: fd.get("full_name"), role_title: fd.get("role_title"), school: fd.get("school"), city: fd.get("city"), country: fd.get("country"),
+      full_name: fd.get("full_name"), role_title: fd.get("role_title"), school: fd.get("school"), school_id: fd.get("school_id"), city: fd.get("city"), country: fd.get("country"),
       level: fd.get("level"), bio: fd.get("bio"), phone: fd.get("phone"),
       topics: fd.getAll("topics"), gives: fd.getAll("gives"), seeks: fd.getAll("seeks"),
       links: Object.fromEntries(Object.keys(LINK_NAMES).map((k) => [k, fd.get(`link-${k}`)])),
@@ -898,7 +927,7 @@ async function board() {
 function postHTML(p, meId) {
   const a = p.author, mine = a.id === meId;
   return `<article class="post fade-in">
-    <div class="head">${avatar(a, "sm")}<div class="who"><span><a href="#/u/${esc(a.id)}">${esc(a.full_name)}</a> ${sampleTag(a)}</span><span>${esc(where(a))}${where(a) ? " · " : ""}${ago(p.at)}</span></div><span class="kind ${esc(p.kind)}">${KIND_NAMES[p.kind] || "Post"}</span></div>
+    <div class="head">${avatar(a, "sm")}<div class="who"><span><a href="#/u/${esc(a.id)}">${esc(a.full_name)}</a></span><span>${esc(where(a))}${where(a) ? " · " : ""}${ago(p.at)}</span></div><span class="kind ${esc(p.kind)}">${KIND_NAMES[p.kind] || "Post"}</span></div>
     <p class="text" dir="auto">${esc(p.text)}</p>
     ${p.original ? `<p class="orig" dir="auto" lang="${esc(p.lang)}" hidden>${esc(p.original)}</p>` : ""}
     <div class="foot">

@@ -6,6 +6,7 @@ import { json, error, clip, readJson, sha256, limited } from "../lib/http.js";
 import { db, card, requireUser, connectionBetween, pairOf, TOPICS } from "../lib/db.js";
 import { gemini, modelOf } from "../lib/gemini.js";
 import { locate } from "../lib/places.js";
+import { UNJOINED_SCHOOLS } from "./profile.js";
 
 const parse = (s) => { try { return JSON.parse(s); } catch { return []; } };
 const inter = (a, b) => a.filter((x) => b.includes(x));
@@ -115,16 +116,17 @@ export async function remove({ request, env, params }) {
 export async function map({ request, env }) {
   const u = await requireUser(env, request);
   const d = await db(env);
-  const [{ results: users }, { results: edges }] = await Promise.all([
-    d.prepare("SELECT id, full_name, school, city, country, level, topics, avatar, lat, lng, is_demo FROM users").all(),
+  const [{ results: users }, { results: edges }, { results: waiting }] = await Promise.all([
+    d.prepare("SELECT id, full_name, school, city, country, level, topics, avatar, lat, lng FROM users").all(),
     d.prepare("SELECT a, b FROM connections WHERE status = 'accepted'").all(),
+    d.prepare(UNJOINED_SCHOOLS).all(),
   ]);
   return json({
     me: u.id,
     nodes: users.map((x) => {
       const [lat, lng] = x.lat != null ? [x.lat, x.lng] : locate(x.city, x.country) || [null, null];
-      return { id: x.id, name: x.full_name, school: x.school, city: x.city, country: x.country, level: x.level || "", topics: parse(x.topics), lat, lng, sample: !!x.is_demo, avatar: x.avatar ? `/api/avatar/${x.id}?v=${x.avatar}` : null };
-    }),
+      return { id: x.id, name: x.full_name, school: x.school, city: x.city, country: x.country, level: x.level || "", topics: parse(x.topics), lat, lng, avatar: x.avatar ? `/api/avatar/${x.id}?v=${x.avatar}` : null };
+    }).concat(waiting.map((s) => ({ id: `school:${s.id}`, waiting: true, name: s.name, school: s.name, city: s.city, country: s.country, level: s.level || "", topics: [] }))),
     edges: edges.map((e) => [e.a, e.b]),
   });
 }
@@ -162,10 +164,11 @@ export async function intro({ request, env, params }) {
 /** GET /api/stats — public numbers for the landing page. */
 export async function stats({ env }) {
   const d = await db(env);
-  const [u, c, k] = await Promise.all([
+  const [u, s, c, k] = await Promise.all([
     d.prepare("SELECT COUNT(*) n FROM users").first(),
-    d.prepare("SELECT COUNT(DISTINCT LOWER(TRIM(country))) n FROM users WHERE country != ''").first(),
+    d.prepare("SELECT COUNT(*) n FROM schools").first(),
+    d.prepare("SELECT COUNT(DISTINCT c) n FROM (SELECT LOWER(TRIM(country)) c FROM users WHERE country != '' UNION SELECT LOWER(TRIM(country)) FROM schools WHERE country != '')").first(),
     d.prepare("SELECT COUNT(*) n FROM connections WHERE status = 'accepted'").first(),
   ]);
-  return json({ principals: u?.n || 0, countries: c?.n || 0, connections: k?.n || 0 }, 200, { "cache-control": "public, max-age=60" });
+  return json({ principals: u?.n || 0, schools: s?.n || 0, countries: c?.n || 0, connections: k?.n || 0 }, 200, { "cache-control": "public, max-age=60" });
 }

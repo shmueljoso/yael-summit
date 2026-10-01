@@ -18,6 +18,7 @@ const ROUTES = [
   ["PUT", "/api/me/avatar", profile.putAvatar],
   ["DELETE", "/api/me/avatar", profile.deleteAvatar],
   ["GET", "/api/avatar/:id", profile.avatar],
+  ["GET", "/api/schools", profile.schools],
   ["GET", "/api/people", profile.people],
   ["GET", "/api/people/:id", profile.person],
   ["GET", "/api/suggestions", conn.suggestions],

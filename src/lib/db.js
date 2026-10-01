@@ -3,7 +3,7 @@
  * database needs no migration step.
  */
 import { error, getCookie, randomId } from "./http.js";
-import { hasDemo, seedDemo, removeDemo } from "./demo.js";
+import { SCHOOLS } from "./schools.js";
 
 export const TOPICS = {
   identity: "Jewish identity",
@@ -44,6 +44,8 @@ const SCHEMA = [
     id TEXT PRIMARY KEY, user_id TEXT NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL, original TEXT,
     lang TEXT DEFAULT 'en', created_at INTEGER NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS posts_time ON posts (created_at)`,
+  `CREATE TABLE IF NOT EXISTS schools (id TEXT PRIMARY KEY, name TEXT NOT NULL, city TEXT DEFAULT '', country TEXT DEFAULT '', level TEXT DEFAULT '')`,
+  `CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT)`,
 ];
 
 // Columns added after launch. ALTER fails harmlessly when the column already exists.
@@ -51,17 +53,48 @@ const MIGRATIONS = [
   "ALTER TABLE users ADD COLUMN is_demo INTEGER DEFAULT 0",
   "ALTER TABLE users ADD COLUMN lat REAL",
   "ALTER TABLE users ADD COLUMN lng REAL",
+  "ALTER TABLE users ADD COLUMN school_id TEXT",
 ];
 
 async function prepare(env) {
   const d = env.DB;
   await d.batch(SCHEMA.map((q) => d.prepare(q)));
   for (const q of MIGRATIONS) { try { await d.prepare(q).run(); } catch { /* already applied */ } }
-  // Sample content: DEMO_DATA "on" keeps it, "off" removes it (see demo.js).
-  const demo = String(env.DEMO_DATA || "off").toLowerCase() === "on";
-  const present = await hasDemo(d);
-  if (demo && !present) await seedDemo(d);
-  if (!demo && present) await removeDemo(d);
+  await removeSampleContent(d);
+  await syncSchools(d);
+}
+
+/** The early demo had fictional principals (is_demo = 1). Remove them and everything they touched. */
+async function removeSampleContent(d) {
+  if (!(await d.prepare("SELECT 1 FROM users WHERE is_demo = 1 LIMIT 1").first())) return;
+  const demo = "(SELECT id FROM users WHERE is_demo = 1)";
+  await d.batch([
+    d.prepare(`DELETE FROM messages WHERE from_id IN ${demo} OR to_id IN ${demo}`),
+    d.prepare(`DELETE FROM connections WHERE a IN ${demo} OR b IN ${demo}`),
+    d.prepare(`DELETE FROM posts WHERE user_id IN ${demo}`),
+    d.prepare(`DELETE FROM sessions WHERE user_id IN ${demo}`),
+    d.prepare("DELETE FROM users WHERE is_demo = 1"),
+  ]);
+}
+
+/** Keeps the schools table equal to schools.js. Runs only when the list changed. */
+async function syncSchools(d) {
+  const version = String(SCHOOLS.length) + ":" + JSON.stringify(SCHOOLS).length;
+  const row = await d.prepare("SELECT v FROM meta WHERE k = 'schools'").first();
+  if (row?.v === version) return;
+  const keep = new Set(SCHOOLS.map(([id]) => id));
+  const { results: existing } = await d.prepare("SELECT id FROM schools").all();
+  const gone = existing.map((r) => r.id).filter((id) => !keep.has(id));
+  await d.batch([
+    ...SCHOOLS.map(([id, name, city, country, level]) => d.prepare(
+      "INSERT INTO schools (id, name, city, country, level) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, city = excluded.city, country = excluded.country, level = excluded.level"
+    ).bind(id, name, city, country, level)),
+    ...gone.flatMap((id) => [
+      d.prepare("DELETE FROM schools WHERE id = ?").bind(id),
+      d.prepare("UPDATE users SET school_id = NULL WHERE school_id = ?").bind(id),
+    ]),
+    d.prepare("INSERT INTO meta (k, v) VALUES ('schools', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind(version),
+  ]);
 }
 
 let ready = null;
@@ -70,8 +103,6 @@ export function db(env) {
   ready ??= prepare(env).catch((e) => { ready = null; throw e; });
   return ready.then(() => env.DB);
 }
-
-export const demoOn = (env) => String(env.DEMO_DATA || "off").toLowerCase() === "on";
 
 /** Canonical key for a pair of users, so each connection or conversation has one row. */
 export const pairOf = (x, y) => (x < y ? [x, y] : [y, x]);
@@ -84,8 +115,7 @@ export function card(u) {
   return {
     id: u.id, full_name: u.full_name, role_title: u.role_title, school: u.school, city: u.city, country: u.country,
     level: u.level, bio: u.bio, topics: parse(u.topics, []), gives: parse(u.gives, []), seeks: parse(u.seeks, []),
-    avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar}` : null,
-    ...(u.is_demo ? { sample: true } : {}),
+    school_id: u.school_id || null, avatar: u.avatar ? `/api/avatar/${u.id}?v=${u.avatar}` : null,
   };
 }
 /** Adds contact details: only for yourself and for accepted connections. */
