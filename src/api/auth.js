@@ -1,7 +1,6 @@
 /** Sign up, sign in, sign out. Principals register with their full name. */
 import { json, error, clip, readJson, randomId, limited } from "../lib/http.js";
-import { db, full, hashPassword, startSession, endSessionCookie, demoOn } from "../lib/db.js";
-import { welcomeDemo } from "../lib/demo.js";
+import { db, full, hashPassword, startSession, endSessionCookie } from "../lib/db.js";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -31,8 +30,6 @@ export async function signup({ request, env }) {
   await d.prepare(
     "INSERT INTO users (id, email, pass_hash, salt, full_name, created_at) VALUES (?, ?, ?, ?, ?, ?)"
   ).bind(id, email, pass_hash, salt, full_name, Date.now()).run();
-
-  if (demoOn(env)) await welcomeDemo(d, id).catch(() => {}); // sample requests + a hello, while demo content is on
 
   const cookie = await startSession(env, id, request);
   const u = await d.prepare("SELECT * FROM users WHERE id = ?").bind(id).first();
