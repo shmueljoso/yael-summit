@@ -1182,9 +1182,9 @@ function summit() {
     <div class="bento-tile bento-fact"><span class="label">Program</span><b class="bento-num">Soon</b><span class="tiny">Sessions, speakers and workshops</span></div>
     <section class="bento-tile bento-schedule" aria-label="Schedule">
       <span class="label">Schedule</span>
-      <div class="slot"><time>--:--</time><span>Opening &amp; welcome</span></div>
-      <div class="slot"><time>--:--</time><span>Sessions and workshops</span></div>
-      <div class="slot"><time>--:--</time><span>Meet your constellation</span></div>
+      <div class="slot"><time>—</time><span>Opening &amp; welcome</span></div>
+      <div class="slot"><time>—</time><span>Sessions and workshops</span></div>
+      <div class="slot"><time>—</time><span>Meet your constellation</span></div>
       <p class="tiny" style="margin-top:10px">The full schedule will appear here once the program is announced.</p>
     </section>
     <a class="bento-tile bento-network" href="${state.me ? "#/map" : "#/join"}">
