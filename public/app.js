@@ -238,7 +238,7 @@ function sky(cv) {
     const { c, w, h } = g, k = (reduceMotion ? 6000 : t) / 1000, day = isDay(); c.clearRect(0, 0, w, h);
     for (const gr of groups) {
       const p = ((k + gr.ph) % gr.per) / gr.per, grow = Math.min(1, p * 3), a = p < .75 ? 1 : 1 - (p - .75) / .25;
-      c.strokeStyle = day ? `rgba(176,132,48,${.45 * a})` : `rgba(216,176,96,${.35 * a})`; c.lineWidth = .8; c.beginPath();
+      c.strokeStyle = day ? `rgba(150,105,30,${.5 * a})` : `rgba(227,181,90,${.4 * a})`; c.lineWidth = .8; c.beginPath();
       const segs = (gr.chain.length - 1) * grow;
       for (let i = 0; i < gr.chain.length - 1; i++) {
         const f = Math.max(0, Math.min(1, segs - i)); if (!f) break;
@@ -248,7 +248,7 @@ function sky(cv) {
     }
     for (const s of stars) {
       const tw = reduceMotion ? .8 : .5 + .5 * Math.sin(k * 1.3 + s.t);
-      c.fillStyle = day ? `rgba(24,43,110,${tw * .55})` : `rgba(242,240,234,${tw})`; c.beginPath(); c.arc(s.x, s.y, s.s, 0, 7); c.fill();
+      c.fillStyle = day ? `rgba(18,19,26,${tw * .45})` : `rgba(244,241,234,${tw})`; c.beginPath(); c.arc(s.x, s.y, s.s, 0, 7); c.fill();
     }
   });
 }
@@ -259,10 +259,10 @@ function cover(cv, seed, links = 0) {
   for (let i = 0; i < 90; i++) { c.fillStyle = `rgba(242,240,234,${.2 + r() * .6})`; c.beginPath(); c.arc(r() * w, r() * h, r() * 1.2 + .2, 0, 7); c.fill(); }
   const cx = w * (.62 + r() * .2), cy = h * (.35 + r() * .2), n = Math.min(14, 5 + links);
   const pts = Array.from({ length: n }, (_, i) => { const a = (i / n) * Math.PI * 2 + r(), d = 40 + r() * Math.min(w, h) * .45; return [cx + Math.cos(a) * d * 1.3, cy + Math.sin(a) * d * .7]; });
-  c.strokeStyle = "rgba(216,176,96,.45)"; c.lineWidth = 1;
+  c.strokeStyle = "rgba(227,181,90,.5)"; c.lineWidth = 1;
   pts.forEach(([x, y]) => { c.beginPath(); c.moveTo(cx, cy); c.lineTo(x, y); c.stroke(); });
-  pts.forEach(([x, y]) => { c.fillStyle = "rgba(141,184,255,.95)"; c.beginPath(); c.arc(x, y, 2.4, 0, 7); c.fill(); });
-  c.fillStyle = "#F1D591"; c.shadowColor = "#F1D591"; c.shadowBlur = 16; c.beginPath(); c.arc(cx, cy, 5, 0, 7); c.fill(); c.shadowBlur = 0;
+  pts.forEach(([x, y]) => { c.fillStyle = "rgba(244,241,234,.9)"; c.beginPath(); c.arc(x, y, 2.4, 0, 7); c.fill(); });
+  c.fillStyle = "#E3B55A"; c.shadowColor = "#E3B55A"; c.shadowBlur = 16; c.beginPath(); c.arc(cx, cy, 5, 0, 7); c.fill(); c.shadowBlur = 0;
 }
 
 // =============================================================
@@ -495,8 +495,8 @@ function people(mode) {
 }
 
 // Map colors: what they mean, and which group is highlighted.
-const TOPIC_COLORS = ["#8DB8FF", "#F1D591", "#7FDDB0", "#E78FB3", "#B39CFF", "#6FD3E8", "#F2A66B", "#A8E26B", "#FF9F9F", "#5FA8FF", "#E6A8FF", "#FFD36B"];
-const LEVEL_COLORS = { early: "#FF9F9F", elem: "#F1D591", mid: "#7FDDB0", high: "#8DB8FF", k12: "#B39CFF", supp: "#F2A66B", other: "#A9B3D6" };
+const TOPIC_COLORS = ["#8DB8FF", "#FF8FC7", "#7FDDB0", "#E78FB3", "#B39CFF", "#6FD3E8", "#F2A66B", "#A8E26B", "#FF9F9F", "#5FA8FF", "#E6A8FF", "#C5E86C"];
+const LEVEL_COLORS = { early: "#FF9F9F", elem: "#6FD3E8", mid: "#7FDDB0", high: "#8DB8FF", k12: "#B39CFF", supp: "#F2A66B", other: "#A9B3D6" };
 const mapStyle = { by: (() => { try { return localStorage.getItem("mapBy") || "level"; } catch { return "topic"; } })(), filter: "", changed: null };
 const groupOf = (n) => (mapStyle.by === "level" ? n.level || "" : n.topics[0] || "");
 function groups() {
@@ -594,7 +594,7 @@ async function constellationMap(onFilterReady) {
     for (const [a, b] of data.edges) {
       const A = byId.get(a), B = byId.get(b); if (!A || !B) continue;
       const isMine = a === data.me || b === data.me;
-      c.strokeStyle = isMine ? "rgba(241,213,145,.75)" : on(A) && on(B) ? "rgba(141,184,255,.28)" : "rgba(141,184,255,.06)";
+      c.strokeStyle = isMine ? "rgba(227,181,90,.9)" : on(A) && on(B) ? "rgba(227,181,90,.3)" : "rgba(227,181,90,.06)";
       c.lineWidth = isMine ? 1.5 : .8; c.beginPath(); c.moveTo(...P(A)); c.lineTo(...P(B)); c.stroke();
     }
     const base = nodes.length > 80 ? 3.6 : 4.5;
@@ -603,7 +603,7 @@ async function constellationMap(onFilterReady) {
       // Schools whose principal hasn't joined yet are fainter, smaller stars.
       const rad = me ? 8 : n === hover ? 7 : n.waiting ? base * .8 : mine.has(n.id) ? base + 1 : base;
       c.globalAlpha = (on(n) || me ? tw : .15) * (n.waiting && n !== hover ? .7 : 1);
-      c.fillStyle = me ? "#F1D591" : n.c; c.shadowColor = c.fillStyle; c.shadowBlur = me || n === hover ? 18 : n.waiting ? 0 : 8;
+      c.fillStyle = me ? "#E3B55A" : n.c; c.shadowColor = c.fillStyle; c.shadowBlur = me || n === hover ? 18 : n.waiting ? 0 : 8;
       c.beginPath(); c.arc(x, y, rad, 0, 7); c.fill(); c.shadowBlur = 0; c.globalAlpha = 1;
       if (me || n === hover) { c.fillStyle = "#F2F0EA"; c.font = "500 12px DM Sans, sans-serif"; c.textAlign = "center"; c.fillText(me ? "You" : n.name, x, y - rad - 8); }
     }
@@ -1169,15 +1169,29 @@ function pickSchool(m, byLabel) {
 // =============================================================
 function summit() {
   view.innerHTML = `
-  <div class="wrap soon fade-in">
-    <img class="poster" src="assets/summit-logo.jpg" alt="Yael Summit emblem: a star of David made of a blue ribbon and a gold triangle, over the Earth at night">
-    <div class="stack" style="gap:18px">
+  <div class="wrap bento fade-in">
+    <section class="bento-tile bento-hero">
       <p class="label">The Yael Summit</p>
       <h1 class="display">Constellation</h1>
-      <p class="muted" style="font-size:1.15rem;max-width:44ch">An international gathering of Jewish school leaders, hosted by the Yael Foundation. The program, speakers, dates and venue are coming soon.</p>
-      <div class="facts"><div><span>Dates</span>Coming soon</div><div><span>Venue</span>Coming soon</div><div><span>Program</span>Coming soon</div></div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">${state.me ? `<a class="btn btn-gold" href="#/">Back to my constellation</a>` : `<a class="btn btn-gold" href="#/join">Join the constellation</a><a class="btn btn-quiet" href="#/signin">Sign in</a>`}</div>
-    </div>
+      <p class="lede">An international gathering of Jewish school leaders, hosted by the Yael Foundation. The program, speakers, dates and venue are coming soon.</p>
+      <div class="bento-cta">${state.me ? `<a class="btn btn-gold" href="#/">Back to my constellation</a><a class="btn btn-soft" href="#/people">Meet the principals</a>` : `<a class="btn btn-gold" href="#/join">Join the constellation</a><a class="btn btn-quiet" href="#/signin">Sign in</a>`}</div>
+    </section>
+    <div class="bento-tile bento-poster"><img class="poster" src="assets/summit-logo.jpg" alt="Yael Summit emblem: a star of David made of a blue ribbon and a gold triangle, over the Earth at night"></div>
+    <div class="bento-tile bento-fact"><span class="label">Dates</span><b class="bento-num">TBA</b><span class="tiny">Coming soon</span></div>
+    <div class="bento-tile bento-fact"><span class="label">Venue</span><b class="bento-num">TBA</b><span class="tiny">Coming soon</span></div>
+    <div class="bento-tile bento-fact"><span class="label">Program</span><b class="bento-num">Soon</b><span class="tiny">Sessions, speakers and workshops</span></div>
+    <section class="bento-tile bento-schedule" aria-label="Schedule">
+      <span class="label">Schedule</span>
+      <div class="slot"><time>—</time><span>Opening &amp; welcome</span></div>
+      <div class="slot"><time>—</time><span>Sessions and workshops</span></div>
+      <div class="slot"><time>—</time><span>Meet your constellation</span></div>
+      <p class="tiny" style="margin-top:10px">The full schedule will appear here once the program is announced.</p>
+    </section>
+    <a class="bento-tile bento-network" href="${state.me ? "#/map" : "#/join"}">
+      <span class="label">Before you arrive</span>
+      <h2>Find the principals worth meeting.</h2>
+      <span class="muted small">${state.me ? "Open the constellation map →" : "Create your profile →"}</span>
+    </a>
   </div>`;
 }
 
