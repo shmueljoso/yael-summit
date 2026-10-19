@@ -20,6 +20,7 @@ android {
         versionName((project.findProperty('versionName') ?: '1.0').toString())
         buildConfigField 'String', 'SITE_URL', "\"${siteUrl}\""
         buildConfigField 'String', 'SITE_HOST', "\"${siteHost}\""
+        manifestPlaceholders = [siteHost: siteHost]
     }
 
     signingConfigs {

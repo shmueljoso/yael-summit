@@ -12,6 +12,20 @@ What the app handles natively:
 - **No connection:** a "No connection" screen with *Try again*.
 - **Layout:** the page is kept clear of the status bar and the gesture bar.
 
+## Meeting in person
+- **Your code**: *Meet in person* (QR button in the top bar, or long-press the app icon → *My code*)
+  shows a QR code with your meet link.
+- **Scan**: *Scan a code* reads another principal's code and opens their card with *Connect*.
+  Any phone's camera app can scan it too.
+- **Tap phones (NFC)**: while *Meet in person* is open, the phone acts as an NFC tag holding
+  your meet link (`NfcCardService`, a standard Type 4 tag). Another Android phone held back to
+  back opens it, in the app if installed, otherwise in the browser. NFC must be on in both phones.
+- **Save contact**: on a connection's profile, opens the phone's new-contact screen, filled in.
+- **Share my link**: the phone's share sheet.
+- **App Links**: links to the site (emails, chats, scanned codes) open straight in the app. The
+  site serves `/.well-known/assetlinks.json` with this app's signing fingerprint (`src/worker.js`);
+  if the keystore changes, update that fingerprint.
+
 ## Getting the APK
 GitHub builds it (`.github/workflows/android.yml`):
 - after each change merged to `main`: **Releases → "Yael Summit · Android app" → yael-summit.apk**

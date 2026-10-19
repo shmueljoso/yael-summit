@@ -55,6 +55,8 @@ const MESSAGES = {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    // Lets Android open links to this site straight in the Yael Summit app (verified App Links).
+    if (url.pathname === "/.well-known/assetlinks.json") return assetLinks();
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
     if (request.method !== "GET" && !sameOrigin(request)) return error(403, "forbidden", "Cross-site request blocked.");
 
@@ -73,3 +75,12 @@ export default {
     }
   },
 };
+
+// The Android app's package and signing-certificate fingerprint (android/app/yael-summit.keystore).
+const ANDROID_APP = { package: "org.yaelfoundation.summit", sha256: "CE:42:87:31:61:2B:24:4A:67:3B:C8:B1:C6:BD:A6:2E:E5:5F:6A:87:AD:F7:F8:D4:02:FA:57:AD:00:29:A2:AE" };
+function assetLinks() {
+  return new Response(JSON.stringify([{
+    relation: ["delegate_permission/common.handle_all_urls"],
+    target: { namespace: "android_app", package_name: ANDROID_APP.package, sha256_cert_fingerprints: [ANDROID_APP.sha256] },
+  }]), { headers: { "content-type": "application/json", "cache-control": "public, max-age=3600" } });
+}

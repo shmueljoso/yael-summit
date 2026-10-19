@@ -1,9 +1,22 @@
 package org.yaelfoundation.summit;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.ComponentName;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ShortcutInfo;
+import android.content.pm.ShortcutManager;
+import android.graphics.drawable.Icon;
+import android.nfc.NfcAdapter;
+import android.nfc.cardemulation.CardEmulation;
+import android.provider.ContactsContract;
+import android.provider.Settings;
+import android.webkit.PermissionRequest;
+import org.json.JSONObject;
+import java.util.Arrays;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
@@ -28,11 +41,15 @@ import android.widget.FrameLayout;
  */
 public class MainActivity extends Activity {
     private static final int FILE_REQUEST = 1001;
+    private static final int CAMERA_REQUEST = 1002;
     private static final String HOME = BuildConfig.SITE_URL + "/";
 
     private WebView web;
     private ValueCallback<Uri[]> fileCallback;
     private String lastUrl = HOME;
+    private PermissionRequest pendingCamera;   // the scanner asked for the camera; waiting for the user
+    private String sharingUrl;                 // the meet link offered by NFC while "Meet in person" is open
+    private boolean resumed;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -66,6 +83,25 @@ public class MainActivity extends Activity {
 
         if (state != null) web.restoreState(state);
         else web.loadUrl(startUrl(getIntent()));
+        addShortcuts();
+    }
+
+    /** Long-press the app icon: "My code" and "Scan a code". */
+    private void addShortcuts() {
+        if (Build.VERSION.SDK_INT < 25) return;
+        ShortcutManager sm = getSystemService(ShortcutManager.class);
+        if (sm == null) return;
+        sm.setDynamicShortcuts(Arrays.asList(
+            shortcut("meet", "My code", "Show my code", "#/meet"),
+            shortcut("scan", "Scan a code", "Scan a code", "#/scan")));
+    }
+
+    private ShortcutInfo shortcut(String id, String shortLabel, String longLabel, String hash) {
+        Intent open = new Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.SITE_URL + "/" + hash), this, MainActivity.class);
+        return new ShortcutInfo.Builder(this, id)
+            .setShortLabel(shortLabel).setLongLabel(longLabel)
+            .setIcon(Icon.createWithResource(this, R.mipmap.ic_launcher))
+            .setIntent(open).build();
     }
 
     /** Opens the app at a page of the site when launched from a link to it. */
@@ -131,6 +167,21 @@ public class MainActivity extends Activity {
     }
 
     private class Chrome extends WebChromeClient {
+        // The scanner asks for the camera: grant it for the site, asking Android first if needed.
+        @Override
+        public void onPermissionRequest(PermissionRequest request) {
+            boolean ours = isOurs(request.getOrigin());
+            boolean wantsCamera = Arrays.asList(request.getResources()).contains(PermissionRequest.RESOURCE_VIDEO_CAPTURE);
+            if (!ours || !wantsCamera) { request.deny(); return; }
+            if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                request.grant(new String[] {PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+            } else {
+                if (pendingCamera != null) pendingCamera.deny();
+                pendingCamera = request;
+                requestPermissions(new String[] {Manifest.permission.CAMERA}, CAMERA_REQUEST);
+            }
+        }
+
         // Profile photo: the site's <input type="file"> opens the phone's gallery / camera.
         @Override
         public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
@@ -149,12 +200,99 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Lets the offline page try again. */
+    /** What the site can ask the app for (window.Android). */
     private class Bridge {
+        /** The offline page's "Try again". */
         @JavascriptInterface
         public void retry() {
             runOnUiThread(() -> web.loadUrl(lastUrl));
         }
+
+        @JavascriptInterface
+        public String version() { return BuildConfig.VERSION_NAME; }
+
+        /** The phone's share sheet (WhatsApp, email, …). */
+        @JavascriptInterface
+        public void share(String title, String url) {
+            runOnUiThread(() -> {
+                Intent send = new Intent(Intent.ACTION_SEND).setType("text/plain")
+                    .putExtra(Intent.EXTRA_SUBJECT, title).putExtra(Intent.EXTRA_TEXT, title + "\n" + url);
+                try { startActivity(Intent.createChooser(send, "Share")); } catch (ActivityNotFoundException ignored) { }
+            });
+        }
+
+        /** Opens the phone's "new contact" screen, filled in. Nothing is saved without the user. */
+        @JavascriptInterface
+        public void saveContact(String json) {
+            runOnUiThread(() -> {
+                try {
+                    JSONObject c = new JSONObject(json);
+                    Intent add = new Intent(ContactsContract.Intents.Insert.ACTION).setType(ContactsContract.RawContacts.CONTENT_TYPE)
+                        .putExtra(ContactsContract.Intents.Insert.NAME, c.optString("name"))
+                        .putExtra(ContactsContract.Intents.Insert.COMPANY, c.optString("company"))
+                        .putExtra(ContactsContract.Intents.Insert.JOB_TITLE, c.optString("title"))
+                        .putExtra(ContactsContract.Intents.Insert.NOTES, c.optString("note"));
+                    if (!c.optString("email").isEmpty()) add.putExtra(ContactsContract.Intents.Insert.EMAIL, c.optString("email"));
+                    if (!c.optString("phone").isEmpty()) add.putExtra(ContactsContract.Intents.Insert.PHONE, c.optString("phone"));
+                    startActivity(add);
+                } catch (Exception ignored) { }
+            });
+        }
+
+        /** "none" (no NFC, or can't act as a tag), "off" (NFC turned off) or "on". */
+        @JavascriptInterface
+        public String nfcState() {
+            NfcAdapter nfc = NfcAdapter.getDefaultAdapter(MainActivity.this);
+            if (nfc == null || !getPackageManager().hasSystemFeature(PackageManager.FEATURE_NFC_HOST_CARD_EMULATION)) return "none";
+            return nfc.isEnabled() ? "on" : "off";
+        }
+
+        @JavascriptInterface
+        public void openNfcSettings() {
+            runOnUiThread(() -> {
+                try { startActivity(new Intent(Settings.ACTION_NFC_SETTINGS)); }
+                catch (ActivityNotFoundException e) { startActivity(new Intent(Settings.ACTION_WIRELESS_SETTINGS)); }
+            });
+        }
+
+        /** Offers a meet link to phones tapped against this one. Only links to the site. */
+        @JavascriptInterface
+        public boolean nfcShare(String url) {
+            if (url == null || !isOurs(Uri.parse(url)) || !"on".equals(nfcState())) return false;
+            runOnUiThread(() -> { sharingUrl = url; if (resumed) startNfcSharing(); });
+            return true;
+        }
+
+        @JavascriptInterface
+        public void nfcStop() {
+            runOnUiThread(() -> { sharingUrl = null; stopNfcSharing(); });
+        }
+    }
+
+    private void startNfcSharing() {
+        NfcCardService.share(sharingUrl);
+        NfcAdapter nfc = NfcAdapter.getDefaultAdapter(this);
+        if (nfc == null) return;
+        try { CardEmulation.getInstance(nfc).setPreferredService(this, new ComponentName(this, NfcCardService.class)); }
+        catch (Exception ignored) { /* not supported: the service still answers for its AID */ }
+    }
+
+    private void stopNfcSharing() {
+        NfcCardService.share(null);
+        NfcAdapter nfc = NfcAdapter.getDefaultAdapter(this);
+        if (nfc == null) return;
+        try { CardEmulation.getInstance(nfc).unsetPreferredService(this); } catch (Exception ignored) { }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        if (requestCode == CAMERA_REQUEST && pendingCamera != null) {
+            if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) pendingCamera.grant(new String[] {PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+            else pendingCamera.deny();
+            pendingCamera = null;
+            return;
+        }
+        super.onRequestPermissionsResult(requestCode, permissions, results);
     }
 
     @Override
@@ -184,6 +322,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
+        resumed = false;
+        stopNfcSharing();                         // only share while the app is on screen
         CookieManager.getInstance().flush();
         web.onPause();
     }
@@ -191,6 +331,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        resumed = true;
+        if (sharingUrl != null) startNfcSharing();
         web.onResume();
     }
 
