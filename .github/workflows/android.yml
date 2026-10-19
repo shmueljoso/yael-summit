@@ -40,6 +40,16 @@ jobs:
           cp android/app/build/outputs/apk/release/app-release.apk out/yael-summit.apk
           ls -l out
 
+      - name: Verify the APK
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --verbose out/yael-summit.apk | head -4
+          INFO=$("$BT/aapt2" dump badging out/yael-summit.apk | grep -E "^package:|^application-label:|^sdkVersion|^targetSdkVersion|uses-permission" | tr '\n' ' ')
+          SIGNER=$("$BT/apksigner" verify --print-certs out/yael-summit.apk | grep "certificate DN" | head -1)
+          SIZE=$(stat -c %s out/yael-summit.apk)
+          echo "::notice title=APK OK::size=${SIZE} bytes | ${INFO} | ${SIGNER}"
+          unzip -p out/yael-summit.apk classes.dex | strings | grep -m1 -o "https://[a-z0-9.-]*workers.dev" | sed 's/^/::notice title=Site URL::/'
+
       - uses: actions/upload-artifact@v4
         with:
           name: yael-summit-apk
