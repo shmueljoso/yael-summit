@@ -974,7 +974,7 @@ async function board() {
       try { await api("DELETE", `/api/board/${t.dataset.id}`); t.closest(".post").remove(); toast("Post removed."); } catch (err) { toast(err.message); }
     } else if (t.dataset.act === "help") {
       const p = data.posts.find((x) => x.id === t.dataset.id);
-      const note = `About your post: “${p.text.slice(0, 120)}${p.text.length > 120 ? "…" : ""}” — I think I can help.`;
+      const note = `About your post: “${p.text.slice(0, 120)}${p.text.length > 120 ? "…" : ""}” — ${(REPLY[p.kind] || REPLY.question).note}`;
       const person = await api("GET", `/api/people/${p.author.id}`).then((r) => r.profile).catch(() => null);
       if (person?.connection === "connected") {
         try { sessionStorage.setItem(`draft:${p.author.id}`, `${note}\n\n`); } catch { /* storage unavailable */ }
@@ -1008,6 +1008,13 @@ function askReport() {
   });
 }
 
+// The reply button and its opening line follow the kind of post.
+const REPLY = {
+  question: { label: "I can help", note: "I think I can help." },
+  idea: { label: "Count me in", note: "I love this idea and would like to join." },
+  offer: { label: "I'm interested", note: "I'd love to take you up on this." },
+};
+
 function postHTML(p, meId) {
   const a = p.author, mine = a.id === meId;
   return `<article class="post fade-in">
@@ -1015,7 +1022,7 @@ function postHTML(p, meId) {
     <p class="text" dir="auto">${esc(p.text)}</p>
     ${p.original ? `<p class="orig" dir="auto" lang="${esc(p.lang)}" hidden>${esc(p.original)}</p>` : ""}
     <div class="foot">
-      ${mine ? `<button class="linkish" data-act="del" data-id="${esc(p.id)}">Delete</button>` : `<button class="btn btn-soft btn-sm" data-act="help" data-id="${esc(p.id)}">I can help</button>`}
+      ${mine ? `<button class="linkish" data-act="del" data-id="${esc(p.id)}">Delete</button>` : `<button class="btn btn-soft btn-sm" data-act="help" data-id="${esc(p.id)}">${(REPLY[p.kind] || REPLY.question).label}</button>`}
       ${p.original ? `<button class="linkish" data-act="orig">Translated from ${LANGS[p.lang] || "another language"} · Show original</button>` : ""}
       <span class="foot-end">${mine ? "" : `<button class="linkish quiet" data-act="report" data-id="${esc(p.id)}">Report</button>`}${state.admin && !mine ? `<button class="linkish quiet" data-act="adminDel" data-id="${esc(p.id)}">Remove</button>` : ""}</span>
     </div>
