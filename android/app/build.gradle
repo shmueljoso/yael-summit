@@ -1,0 +1,53 @@
+plugins {
+    id 'com.android.application'
+}
+
+def siteUrl = (project.findProperty('siteUrl') ?: '').toString().trim().replaceAll('/+$', '')
+if (!siteUrl.startsWith('https://')) {
+    throw new GradleException("siteUrl must be the site's https:// address (got '${siteUrl}')")
+}
+def siteHost = new URI(siteUrl).host
+
+android {
+    namespace 'org.yaelfoundation.summit'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'org.yaelfoundation.summit'
+        minSdk 24
+        targetSdk 35
+        versionCode((project.findProperty('versionCode') ?: '1') as int)
+        versionName((project.findProperty('versionName') ?: '1.0').toString())
+        buildConfigField 'String', 'SITE_URL', "\"${siteUrl}\""
+        buildConfigField 'String', 'SITE_HOST', "\"${siteHost}\""
+        manifestPlaceholders = [siteHost: siteHost]
+    }
+
+    signingConfigs {
+        // A fixed signing key, so each new APK installs over the previous one.
+        // For Google Play, replace it with a private release key (see android/README.md).
+        app {
+            storeFile file('yael-summit.keystore')
+            storePassword 'yaelsummit'
+            keyAlias 'yael-summit'
+            keyPassword 'yaelsummit'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.app
+        }
+        debug {
+            signingConfig signingConfigs.app
+        }
+    }
+
+    buildFeatures { buildConfig true }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

@@ -573,3 +573,40 @@ button.chip:hover { color: var(--text); border-color: var(--text-3); }
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- meet in person: code, tap phones, scan ---------- */
+.meet-card { display: flex; align-items: center; gap: 16px; padding: 16px 20px; margin-bottom: 14px; border-radius: var(--r); border: 1px solid var(--accent-line); background: linear-gradient(120deg, var(--accent-soft), var(--surface)); color: var(--text); }
+.meet-card:hover { color: var(--text); box-shadow: 0 0 0 1px var(--accent-soft), var(--lift); }
+.meet-card .grow { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.meet-card b { font-family: var(--f-display); font-weight: 700; font-size: 1.15rem; letter-spacing: -.01em; }
+.meet-card .grow span { font-size: .88rem; color: var(--text-2); }
+.meet-card .arrow { color: var(--accent-text); font-size: 1.2rem; }
+.meet-ico { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; flex: none; background: var(--accent); color: var(--accent-ink); }
+.meet-ico svg { width: 22px; height: 22px; }
+.meet-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 760px) { .meet-grid { grid-template-columns: 1fr; } }
+.meet-qr { display: grid; gap: 18px; justify-items: center; }
+.qr-frame { width: min(100%, 340px); aspect-ratio: 1; border-radius: var(--r); background: #fff; padding: 14px; display: grid; place-items: center; box-shadow: 0 0 0 1px var(--line), 0 0 60px -20px var(--accent-line); }
+.qr-frame svg { width: 100%; height: 100%; display: block; }
+.qr-frame .loading { padding: 0; }
+.meet-who { display: flex; gap: 12px; align-items: center; }
+.meet-who > div { display: grid; }
+.meet-h { display: flex; align-items: center; gap: 8px; font-family: var(--f-display); font-weight: 700; font-size: 1.25rem; letter-spacing: -.01em; }
+.meet-h svg, .nfc-hint svg { width: 18px; height: 18px; color: var(--accent); flex: none; }
+.nfc-hint { display: flex; gap: 8px; align-items: center; margin: 0; }
+.meet-nfc { display: grid; gap: 10px; border-color: var(--accent-line); }
+.meet-nfc .btn { justify-self: start; }
+.nfc-waves { position: relative; width: 84px; height: 84px; display: grid; place-items: center; margin-bottom: 4px; color: var(--accent); }
+.nfc-waves svg { width: 30px; height: 30px; position: relative; }
+.nfc-waves i { position: absolute; inset: 0; border-radius: 50%; border: 1px solid var(--accent-line); animation: nfc-pulse 2.4s var(--ease) infinite; }
+.nfc-waves i:nth-child(2) { animation-delay: .8s; }
+.nfc-waves i:nth-child(3) { animation-delay: 1.6s; }
+@keyframes nfc-pulse { from { transform: scale(.35); opacity: 1; } to { transform: scale(1.15); opacity: 0; } }
+.meet-them { max-width: 520px; margin-inline: auto; display: grid; gap: 14px; justify-items: center; text-align: center; padding-block: 40px; }
+.meet-them h1 { font-size: clamp(2.2rem, 1.6rem + 2.4vw, 3.2rem); }
+.meet-them .av.xl { box-shadow: inset 0 0 0 1px var(--accent-line), 0 0 0 8px var(--accent-soft); }
+.meet-acts { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
+.scan-box { position: relative; max-width: 520px; margin-inline: auto; aspect-ratio: 3 / 4; border-radius: var(--r-lg); overflow: hidden; background: #000; border: 1px solid var(--line); }
+.scan-box video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scan-frame { position: absolute; inset: 18% 14%; border-radius: 22px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .45); outline: 2px solid var(--accent); outline-offset: -2px; }
+.scan-msg { position: absolute; inset-inline: 16px; bottom: 16px; margin: 0; text-align: center; color: #F4F1EA; font-size: .9rem; background: rgba(5, 7, 14, .7); border-radius: 999px; padding: 8px 14px; backdrop-filter: blur(8px); }

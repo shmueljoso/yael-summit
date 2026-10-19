@@ -25,6 +25,11 @@ const I = {
   back: '<path d="M15 5 8 12l7 7"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/>',
+  qr: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 17h4v4h-4"/>',
+  scan: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16"/>',
+  nfc: '<path d="M6 8.5a6 6 0 0 1 0 7M9.5 6a10 10 0 0 1 0 12M13 3.5a14 14 0 0 1 0 17"/><circle cx="3.5" cy="12" r="1"/>',
+  share: '<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.4M8.2 13.2l7.6 4.4"/>',
+  contact: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="11" r="2.5"/><path d="M5.5 17c.6-1.8 2-2.8 3.5-2.8s2.9 1 3.5 2.8M15 9h3M15 13h3"/>',
 };
 const icon = (name, fill = false) =>
   `<svg viewBox="0 0 24 24" aria-hidden="true" fill="${fill ? "currentColor" : "none"}" stroke="${fill ? "none" : "currentColor"}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${I[name]}</svg>`;
@@ -110,9 +115,20 @@ const ROUTES = [
   [/^board$/, () => auth(() => board())],
   [/^privacy$/, () => privacy()],
   [/^admin$/, () => auth(() => (state.admin ? adminPage() : go("#/")))],
+  [/^meet$/, () => auth(() => meetMe())],
+  [/^meet\/([\w-]+)$/, (id) => auth(() => meetThem(id))],
+  [/^scan$/, () => auth(() => scanner())],
 ];
 
-function auth(fn) { if (!state.me) { go("#/signin"); return; } fn(); }
+function auth(fn) {
+  if (!state.me) {
+    try { sessionStorage.setItem("after", location.hash); } catch { /* storage unavailable */ }
+    go(/^#\/meet\//.test(location.hash) ? "#/join" : "#/signin"); return;
+  }
+  fn();
+}
+/** Where to go after signing in: the page the visitor was headed to, if any. */
+function takeAfter() { try { const a = sessionStorage.getItem("after"); sessionStorage.removeItem("after"); return a && a.startsWith("#/") ? a : null; } catch { return null; } }
 
 function route() {
   while (cleanups.length) { try { cleanups.pop()(); } catch { /* ignore */ } }
@@ -169,10 +185,10 @@ function renderChrome() {
   $("#nav").innerHTML = signed
     ? NAV.map(([href, label, ic]) => `<a href="${href}" ${current(href) ? 'aria-current="page"' : ""}>${label}${badge(ic)}</a>`).join("")
     : `<a href="#/summit" ${current("#/summit") ? 'aria-current="page"' : ""}>The Summit</a>`;
-  $("#navEnd").innerHTML = themeButton() + (signed
+  $("#navEnd").innerHTML = (signed ? `<a class="btn btn-quiet theme-btn" href="#/meet" aria-label="Meet in person: my code" title="Meet in person">${icon("qr")}</a>` : "") + themeButton() + (signed
     ? `<button class="me-btn" id="meBtn" aria-haspopup="true" aria-expanded="false">${avatar(state.me, "xs")}<span class="me-name">${esc(first(state.me.full_name))}</span></button>
        <div class="menu" id="meMenu" hidden>
-         <a href="#/u/${state.me.id}">My profile</a><a href="#/me/edit">Edit profile</a><a href="#/summit">The Summit</a>${state.admin ? `<a href="#/admin">Admin</a>` : ""}<a href="#/privacy">Privacy & terms</a><button id="signOut">Sign out</button>
+         <a href="#/u/${state.me.id}">My profile</a><a href="#/meet">Meet in person</a><a href="#/me/edit">Edit profile</a><a href="#/summit">The Summit</a>${state.admin ? `<a href="#/admin">Admin</a>` : ""}<a href="#/privacy">Privacy & terms</a><button id="signOut">Sign out</button>
        </div>`
     : `<a class="btn btn-quiet btn-sm" href="#/signin">Sign in</a><a class="btn btn-gold btn-sm" href="#/join">Join</a>`);
   $("#themeBtn").onclick = () => setTheme(!isDay());
@@ -371,8 +387,9 @@ function landing(mode) {
     try {
       await api("POST", join ? "/api/auth/signup" : "/api/auth/login", f);
       await refreshMe();
-      go(join ? "#/me/edit" : "#/");
-      if (join) toast("Welcome! Start by choosing your school.");
+      const after = takeAfter();
+      go(after || (join ? "#/me/edit" : "#/"));
+      if (join) toast(after ? "Welcome! You can finish your profile anytime in Edit profile." : "Welcome! Start by choosing your school.");
     } catch (ex) { err.textContent = ex.message; btn.disabled = false; }
   };
 }
@@ -395,6 +412,8 @@ async function home() {
           <div class="stat"><b>${reqs.length}</b><span>requests</span></div>
         </div>
       </div>
+
+      <a class="meet-card fade-in" href="#/meet"><span class="meet-ico">${icon(nfcState() === "on" ? "nfc" : "qr")}</span><span class="grow"><b>Meet in person</b><span>${nfcState() === "none" || !APP ? "Show your code, or scan someone else's, and you're connected." : "Tap phones together, or show your code, and you're connected."}</span></span><span class="arrow">→</span></a>
 
       ${!sug.profile_complete ? `<div class="nudge fade-in"><span><b>Complete your profile</b> so we can suggest the right principals: what you're working on, where you're strong, what you want to learn.</span><a class="btn btn-gold btn-sm" href="#/me/edit">Complete profile</a></div>` : ""}
 
@@ -641,7 +660,7 @@ async function profile(id) {
           <p class="role">${esc([p.role_title, p.school].filter(Boolean).join(" · ") || "Principal")}</p>
           <div class="loc">${place(p) ? `<span>${esc(place(p))}</span>` : ""}${p.level ? `<span>${esc(state.levels[p.level] || "")}</span>` : ""}<span><b style="color:var(--gold-ink)">${p.connections}</b> connection${p.connections === 1 ? "" : "s"}</span></div>
         </div>
-        <div class="acts" id="profActs">${connectButtons(p)}${p.connection === "connected" ? `<span class="state connected" style="align-self:center">Connected</span>` : ""}</div>
+        <div class="acts" id="profActs">${connectButtons(p)}${p.connection === "connected" ? `<button class="btn btn-soft" data-act="contact">${icon("contact")}Save contact</button>` : ""}${self ? `<a class="btn btn-soft" href="#/meet">${icon("qr")}My code</a>` : ""}</div>
       </div>
 
       <div class="prof-body">
@@ -670,6 +689,7 @@ async function profile(id) {
   if (!ok) return;
   cover($("#coverCv"), id, data.profile.connections);
   wireConnect(view.firstElementChild, () => profile(id));
+  $("[data-act=contact]")?.addEventListener("click", () => saveContact(data.profile));
 }
 
 // =============================================================
@@ -1000,6 +1020,174 @@ function postHTML(p, meId) {
       <span class="foot-end">${mine ? "" : `<button class="linkish quiet" data-act="report" data-id="${esc(p.id)}">Report</button>`}${state.admin && !mine ? `<button class="linkish quiet" data-act="adminDel" data-id="${esc(p.id)}">Remove</button>` : ""}</span>
     </div>
   </article>`;
+}
+
+// =============================================================
+// meet in person: my code, tap phones (NFC, in the Android app), scan
+// =============================================================
+// The Android app adds a small bridge (window.Android); in a browser these fall back gracefully.
+const APP = typeof window.Android === "object" && typeof window.Android.share === "function";
+const nfcState = () => { try { return APP && window.Android.nfcState ? window.Android.nfcState() : "none"; } catch { return "none"; } };
+const meetLink = (id) => `${location.origin}/#/meet/${id}`;
+
+/** Draws a QR code as an SVG, with the summit mark in the middle. */
+async function qrSvg(text) {
+  const { default: qrcode } = await import("./vendor/qrcode.mjs");
+  const qr = qrcode(0, "H"); qr.addData(text); qr.make();
+  const n = qr.getModuleCount(), q = 2, size = n + q * 2, hole = Math.round(n * 0.24) | 1, h0 = (size - hole) / 2;
+  let d = "";
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    const x = c + q, y = r + q;
+    if (x >= h0 - .5 && x < h0 + hole + .5 && y >= h0 - .5 && y < h0 + hole + .5) continue;
+    if (qr.isDark(r, c)) d += `M${x} ${y}h1v1h-1z`;
+  }
+  return `<svg viewBox="0 0 ${size} ${size}" role="img" aria-label="QR code" shape-rendering="crispEdges"><rect width="${size}" height="${size}" fill="#fff"/><path d="${d}" fill="#0B0E18"/><image href="assets/summit-mark.jpg" x="${h0}" y="${h0}" width="${hole}" height="${hole}" preserveAspectRatio="xMidYMid slice"/></svg>`;
+}
+
+function shareLink(title, url) {
+  if (APP) { try { window.Android.share(title, url); return; } catch { /* fall through */ } }
+  if (navigator.share) { navigator.share({ title, url }).catch(() => {}); return; }
+  navigator.clipboard?.writeText(url).then(() => toast("Link copied."), () => toast(url));
+}
+
+/** Adds a connection to the phone's contacts (the app), or downloads a vCard (browsers). */
+function saveContact(p) {
+  const c = { name: p.full_name, email: p.email || "", phone: p.phone || "", company: p.school || "", title: p.role_title || "", note: "Met through the Yael Summit network" };
+  if (APP && window.Android.saveContact) { try { window.Android.saveContact(JSON.stringify(c)); return; } catch { /* fall through */ } }
+  const v = (s) => String(s).replace(/([,;\\])/g, "\\$1").replace(/\n/g, "\\n");
+  const parts = c.name.split(" "), last = parts.length > 1 ? parts.pop() : "";
+  const card = ["BEGIN:VCARD", "VERSION:3.0", `N:${v(last)};${v(parts.join(" "))};;;`, `FN:${v(c.name)}`, c.company && `ORG:${v(c.company)}`, c.title && `TITLE:${v(c.title)}`, c.email && `EMAIL;TYPE=INTERNET:${v(c.email)}`, c.phone && `TEL;TYPE=CELL:${v(c.phone)}`, `NOTE:${v(c.note)}`, "END:VCARD"].filter(Boolean).join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([card], { type: "text/vcard" })); a.download = `${c.name.replace(/[^\w\s-]/g, "").trim() || "contact"}.vcf`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+/** #/meet — my code, ready to be scanned or tapped. */
+async function meetMe() {
+  const me = state.me, url = meetLink(me.id);
+  view.innerHTML = `
+  <div class="wrap section meet fade-in">
+    <div class="section-head"><div><p class="label">Meet in person</p><h2>Your constellation code</h2></div></div>
+    <div class="meet-grid">
+      <section class="panel-lg meet-qr">
+        <div class="qr-frame" id="qrBox">${loadingHTML}</div>
+        <div class="meet-who">${avatar(me, "sm")}<div><b>${esc(me.full_name)}</b><span class="tiny">${esc(where(me) || "Principal")}</span></div></div>
+      </section>
+      <div class="stack meet-side">
+        <section class="panel meet-nfc" id="nfcBox" hidden></section>
+        <section class="panel stack">
+          <h3 class="meet-h">Their code</h3>
+          <p class="muted small">Scan another principal's code to open their card and connect.</p>
+          <a class="btn btn-gold" href="#/scan">${icon("scan")}Scan a code</a>
+        </section>
+        <section class="panel stack">
+          <h3 class="meet-h">Send your link</h3>
+          <p class="muted small">Not in the same room? Share your link in any chat.</p>
+          <button class="btn btn-soft" id="shareMe" type="button">${icon("share")}Share my link</button>
+        </section>
+      </div>
+    </div>
+  </div>`;
+  $("#shareMe").onclick = () => shareLink(`${me.full_name} · Yael Summit`, url);
+  qrSvg(url).then((svg) => { const b = $("#qrBox"); if (b) b.innerHTML = svg; }).catch(() => { const b = $("#qrBox"); if (b) b.innerHTML = `<p class="tiny">${esc(url)}</p>`; });
+
+  // Tap phones (Android app with NFC): this phone acts as a tag that holds the meet link.
+  const box = $("#nfcBox");
+  const paint = () => {
+    const st = nfcState();
+    if (st === "none") {
+      box.hidden = APP; // an app phone without NFC: nothing to offer here
+      if (!APP) box.innerHTML = `<p class="tiny nfc-hint">${icon("nfc")}In the Android app you can also connect by tapping phones together.</p>`;
+      return;
+    }
+    box.hidden = false;
+    if (st === "off") {
+      box.innerHTML = `<h3 class="meet-h">${icon("nfc")}Tap phones</h3><p class="muted small">Turn on NFC to connect by holding your phones back to back.</p><button class="btn btn-soft" id="nfcOn" type="button">Turn on NFC</button>`;
+      $("#nfcOn").onclick = () => window.Android.openNfcSettings();
+      return;
+    }
+    const ok = window.Android.nfcShare(url);
+    box.innerHTML = ok
+      ? `<div class="nfc-waves" aria-hidden="true"><i></i><i></i><i></i>${icon("nfc")}</div><h3 class="meet-h">Tap phones</h3><p class="muted small">Hold the back of your phone to the back of theirs. Their phone opens your card, with or without the app.</p>`
+      : `<h3 class="meet-h">${icon("nfc")}Tap phones</h3><p class="muted small">This phone can't share by NFC, but it can still read other phones. Use your code instead.</p>`;
+  };
+  paint();
+  const onVis = () => { if (!document.hidden) paint(); };
+  document.addEventListener("visibilitychange", onVis);
+  onLeave(() => { document.removeEventListener("visibilitychange", onVis); try { if (APP) window.Android.nfcStop(); } catch { /* ignore */ } });
+}
+
+/** #/meet/:id — someone's card, opened from their code, a tap or their link. */
+async function meetThem(id) {
+  if (id === state.me.id) { go("#/meet"); return; }
+  let p;
+  const ok = await load(async () => {
+    p = (await api("GET", `/api/people/${id}`)).profile;
+    const already = p.connection === "connected";
+    return `
+    <div class="wrap section meet fade-in">
+      <section class="panel-lg meet-them">
+        <p class="label">${already ? "Already in your constellation" : "You just met"}</p>
+        ${avatar(p, "xl")}
+        <h1 class="display">${esc(p.full_name)}</h1>
+        <p class="muted">${esc([p.role_title, p.school].filter(Boolean).join(" · ") || "Principal")}${place(p) ? `<br>${esc(place(p))}` : ""}</p>
+        <div class="meet-acts">${p.connection ? connectButtons(p) : `<button class="btn btn-gold" data-act="connect" data-id="${esc(p.id)}" data-name="${esc(p.full_name)}" data-note="It was great to meet you in person at the Yael Summit!">Connect</button>`}${already ? `<button class="btn btn-soft" data-act="contact">${icon("contact")}Save contact</button>` : ""}</div>
+        <a class="btn btn-quiet btn-sm" href="#/u/${esc(p.id)}">View full profile →</a>
+      </section>
+    </div>`;
+  });
+  if (!ok) return;
+  wireConnect(view.firstElementChild, () => meetThem(id));
+  $("[data-act=contact]")?.addEventListener("click", () => saveContact(p));
+}
+
+/** #/scan — reads a Yael Summit code with the camera. */
+async function scanner() {
+  view.innerHTML = `
+  <div class="wrap section meet fade-in">
+    <div class="section-head"><div><p class="label">Meet in person</p><h2>Scan a code</h2></div><a class="btn btn-quiet btn-sm" href="#/meet">${icon("qr")}My code</a></div>
+    <div class="scan-box"><video id="scanVideo" playsinline muted></video><div class="scan-frame" aria-hidden="true"></div><p class="scan-msg" id="scanMsg">Starting the camera…</p></div>
+    <p class="tiny" style="margin-top:12px;text-align:center">Point at the code on another principal's phone.</p>
+  </div>`;
+  const video = $("#scanVideo"), msg = $("#scanMsg"), token = routeToken;
+  let stream, timer, done = false;
+  const stop = () => { done = true; clearTimeout(timer); stream?.getTracks().forEach((t) => t.stop()); };
+  onLeave(stop);
+  const found = (text) => {
+    let u; try { u = new URL(text); } catch { u = null; }
+    const m = u && u.host === location.host && /^#\/meet\/[\w-]+$/.test(u.hash) ? u.hash : null;
+    if (m) { stop(); navigator.vibrate?.(40); go(m); return true; }
+    msg.textContent = "That isn't a Yael Summit code. Try another one."; return false;
+  };
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+  } catch {
+    msg.innerHTML = `The camera isn't available. Allow camera access, or use your phone's camera app: it opens the code's link too.`;
+    return;
+  }
+  if (token !== routeToken) { stop(); return; }
+  video.srcObject = stream; await video.play().catch(() => {});
+  msg.textContent = "Looking for a code…";
+  let detect;
+  if ("BarcodeDetector" in window) {
+    try { const bd = new window.BarcodeDetector({ formats: ["qr_code"] }); detect = async () => (await bd.detect(video))[0]?.rawValue; } catch { detect = null; }
+  }
+  if (!detect) {
+    await new Promise((res, rej) => { if (window.jsQR) return res(); const sc = document.createElement("script"); sc.src = "vendor/jsQR.js"; sc.onload = res; sc.onerror = rej; document.head.appendChild(sc); }).catch(() => {});
+    const cv = document.createElement("canvas"), cx = cv.getContext("2d", { willReadFrequently: true });
+    detect = async () => {
+      const w = video.videoWidth, h = video.videoHeight; if (!w || !window.jsQR) return null;
+      const k = Math.min(1, 640 / Math.max(w, h)); cv.width = w * k; cv.height = h * k;
+      cx.drawImage(video, 0, 0, cv.width, cv.height);
+      return window.jsQR(cx.getImageData(0, 0, cv.width, cv.height).data, cv.width, cv.height, { inversionAttempts: "dontInvert" })?.data;
+    };
+  }
+  const tick = async () => {
+    if (done || token !== routeToken) return;
+    try { const v = await detect(); if (v && found(v)) return; } catch { /* keep scanning */ }
+    timer = setTimeout(tick, 180);
+  };
+  tick();
 }
 
 // =============================================================

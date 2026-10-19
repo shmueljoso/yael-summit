@@ -1,0 +1,67 @@
+# Builds the Yael Summit Android app (APK).
+# - Every push that changes android/ builds it; the APK is attached to the run (Actions → this run → Artifacts).
+# - On main it is also published as the "Android app" release, with a fixed download link:
+#   https://github.com/<owner>/<repo>/releases/download/android-latest/yael-summit.apk
+# - Run it by hand from Actions → "Android app" → Run workflow.
+# The site address comes from the SITE_URL repository variable if set, else android/gradle.properties.
+name: Android app
+
+on:
+  push:
+    paths: ["android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Build the APK
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: |
+          ARGS="-PversionCode=${{ github.run_number }} -PversionName=1.${{ github.run_number }}"
+          if [ -n "$SITE_URL" ]; then ARGS="$ARGS -PsiteUrl=$SITE_URL"; fi
+          gradle -p android assembleRelease $ARGS --no-daemon
+          mkdir -p out
+          cp android/app/build/outputs/apk/release/app-release.apk out/yael-summit.apk
+          ls -l out
+
+      - name: Verify the APK
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --verbose out/yael-summit.apk | head -4
+          INFO=$("$BT/aapt2" dump badging out/yael-summit.apk | grep -E "^package:|^application-label:|^sdkVersion|^targetSdkVersion|uses-permission" | tr '\n' ' ')
+          SIGNER=$("$BT/apksigner" verify --print-certs out/yael-summit.apk | grep "certificate DN" | head -1)
+          SIZE=$(stat -c %s out/yael-summit.apk)
+          echo "::notice title=APK OK::size=${SIZE} bytes | ${INFO} | ${SIGNER}"
+          unzip -p out/yael-summit.apk classes.dex | strings | grep -m1 -o "https://[a-z0-9.-]*workers.dev" | sed 's/^/::notice title=Site URL::/'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yael-summit-apk
+          path: out/yael-summit.apk
+
+      - name: Publish as the "Android app" release (main only)
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete android-latest --yes --cleanup-tag || true
+          gh release create android-latest out/yael-summit.apk \
+            --title "Yael Summit · Android app" \
+            --notes "Build ${{ github.run_number }}. Download yael-summit.apk on an Android phone and open it to install." \
+            --latest
