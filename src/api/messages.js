@@ -2,6 +2,7 @@
 import { json, error, clipText, readJson, limited } from "../lib/http.js";
 import { db, card, requireUser, connectionBetween, pairKey } from "../lib/db.js";
 import { sendMail, siteUrl } from "../lib/mail.js";
+import { notify as phone } from "../lib/push.js";
 
 const MAIL_GAP = 2 * 60 * 60; // at most one email per conversation every two hours
 const ONLINE = 6 * 60e3;      // seen this recently → they'll see it on the site, no email
@@ -75,5 +76,6 @@ export async function send({ request, env, params, waitUntil }) {
     "INSERT INTO messages (pair, from_id, to_id, body, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id, created_at"
   ).bind(pairKey(u.id, params.id), u.id, params.id, body, Date.now()).first();
   waitUntil(notifyMessage(env, request, d, u, params.id, body).catch(() => {}));
+  await phone(env, d, params.id, { kind: "message", title: u.full_name, body: body.length > 160 ? `${body.slice(0, 160)}…` : body, url: `#/messages/${u.id}` }, waitUntil);
   return json({ message: { id: r.id, mine: true, body, at: r.created_at } }, 201);
 }

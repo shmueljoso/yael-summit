@@ -8,6 +8,7 @@ import { gemini, modelOf } from "../lib/gemini.js";
 import { locate } from "../lib/places.js";
 import { UNJOINED_SCHOOLS } from "./profile.js";
 import { sendMail, siteUrl } from "../lib/mail.js";
+import { notify as phone } from "../lib/push.js";
 
 const first = (name) => String(name || "").split(" ")[0];
 const schoolLine = (x) => [x.role_title, x.school, x.country].filter(Boolean).join(" · ");
@@ -95,6 +96,7 @@ export async function request({ request, env, waitUntil }) {
     if (existing.status === "pending" && existing.requested_by !== u.id) {
       await d.prepare("UPDATE connections SET status = 'accepted', accepted_at = ? WHERE a = ? AND b = ?").bind(Date.now(), a, bb).run();
       notify(env, request, waitUntil, other, accepted(u));
+      await phone(env, d, other.id, { kind: "accepted", title: `You're connected with ${u.full_name}`, body: "You can now message each other.", url: `#/messages/${u.id}` }, waitUntil);
       return json({ connection: "connected" });
     }
     return json({ connection: existing.status === "accepted" ? "connected" : "sent" });
@@ -108,6 +110,7 @@ export async function request({ request, env, waitUntil }) {
     lines: [schoolLine(u) || "A principal in the Yael Summit network.", "Once you accept, you can see each other's details and message directly."],
     quote: clip(b.note, 300), button: "See the request", hash: "#/",
   });
+  await phone(env, d, other.id, { kind: "request", title: `${u.full_name} wants to connect`, body: clip(b.note, 200) || schoolLine(u), url: "#/" }, waitUntil);
   return json({ connection: "sent" }, 201);
 }
 
@@ -126,6 +129,7 @@ export async function accept({ request, env, params, waitUntil }) {
   if (!c || c.status !== "pending" || c.requested_by === u.id) return error(404, "not_found", "There's no request to accept.");
   await d.prepare("UPDATE connections SET status = 'accepted', accepted_at = ? WHERE a = ? AND b = ?").bind(Date.now(), c.a, c.b).run();
   notify(env, request, waitUntil, await d.prepare("SELECT * FROM users WHERE id = ?").bind(params.id).first(), accepted(u));
+  await phone(env, d, params.id, { kind: "accepted", title: `${u.full_name} accepted your request`, body: "You can now message each other.", url: `#/messages/${u.id}` }, waitUntil);
   return json({ connection: "connected" });
 }
 

@@ -9,11 +9,14 @@ import * as conn from "./api/connections.js";
 import * as msg from "./api/messages.js";
 import * as board from "./api/board.js";
 import * as admin from "./api/admin.js";
+import * as notes from "./api/notifications.js";
 
 const ROUTES = [
   ["POST", "/api/auth/signup", auth.signup],
   ["POST", "/api/auth/login", auth.login],
   ["POST", "/api/auth/logout", auth.logout],
+  ["POST", "/api/auth/forgot", auth.forgot],
+  ["POST", "/api/auth/reset", auth.reset],
   ["GET", "/api/me", profile.me],
   ["PUT", "/api/me", profile.updateMe],
   ["DELETE", "/api/me", profile.deleteMe],
@@ -38,6 +41,14 @@ const ROUTES = [
   ["POST", "/api/board", board.createPost],
   ["DELETE", "/api/board/:id", board.deletePost],
   ["POST", "/api/board/:id/report", board.reportPost],
+  ["GET", "/api/board/:id/comments", board.listComments],
+  ["POST", "/api/board/:id/comments", board.addComment],
+  ["DELETE", "/api/board/comments/:id", board.deleteComment],
+  ["GET", "/api/notifications", notes.list],
+  ["GET", "/api/push/key", notes.key],
+  ["POST", "/api/push", notes.subscribe],
+  ["DELETE", "/api/push", notes.unsubscribe],
+  ["GET", "/api/admin/impact", admin.impact],
   ["GET", "/api/admin", admin.overview],
   ["PUT", "/api/admin/members/:id", admin.setSchool],
   ["DELETE", "/api/admin/members/:id", admin.removeMember],
