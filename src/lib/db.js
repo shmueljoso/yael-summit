@@ -50,6 +50,20 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS reports (
     id TEXT PRIMARY KEY, post_id TEXT NOT NULL, reporter_id TEXT NOT NULL, reason TEXT DEFAULT '',
     created_at INTEGER NOT NULL, UNIQUE (post_id, reporter_id))`,
+  // "Forgot password": one-hour links; only a hash of the token is stored.
+  `CREATE TABLE IF NOT EXISTS password_resets (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires INTEGER NOT NULL)`,
+  // Replies under board posts.
+  `CREATE TABLE IF NOT EXISTS comments (
+    id TEXT PRIMARY KEY, post_id TEXT NOT NULL, user_id TEXT NOT NULL, text TEXT NOT NULL, original TEXT,
+    lang TEXT DEFAULT 'en', created_at INTEGER NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS comments_post ON comments (post_id, created_at)`,
+  // What each member is told about: requests, connections, messages, replies. Feeds phone notifications.
+  `CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL,
+    body TEXT DEFAULT '', url TEXT DEFAULT '', created_at INTEGER NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS notifications_user ON notifications (user_id, id)`,
+  // Browsers / home-screen apps that asked for push notifications.
+  `CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at INTEGER NOT NULL)`,
 ];
 
 // Columns added after launch. ALTER fails harmlessly when the column already exists.
@@ -85,7 +99,11 @@ export async function deleteUserData(d, id) {
     d.prepare("DELETE FROM messages WHERE from_id = ?1 OR to_id = ?1").bind(id),
     d.prepare("DELETE FROM connections WHERE a = ?1 OR b = ?1").bind(id),
     d.prepare("DELETE FROM reports WHERE reporter_id = ?1 OR post_id IN (SELECT id FROM posts WHERE user_id = ?1)").bind(id),
+    d.prepare("DELETE FROM comments WHERE user_id = ?1 OR post_id IN (SELECT id FROM posts WHERE user_id = ?1)").bind(id),
     d.prepare("DELETE FROM posts WHERE user_id = ?").bind(id),
+    d.prepare("DELETE FROM notifications WHERE user_id = ?").bind(id),
+    d.prepare("DELETE FROM push_subs WHERE user_id = ?").bind(id),
+    d.prepare("DELETE FROM password_resets WHERE user_id = ?").bind(id),
     d.prepare("DELETE FROM avatars WHERE user_id = ?").bind(id),
     d.prepare("DELETE FROM sessions WHERE user_id = ?").bind(id),
     d.prepare("DELETE FROM users WHERE id = ?").bind(id),

@@ -29,6 +29,8 @@ const I = {
   scan: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16"/>',
   nfc: '<path d="M6 8.5a6 6 0 0 1 0 7M9.5 6a10 10 0 0 1 0 12M13 3.5a14 14 0 0 1 0 17"/><circle cx="3.5" cy="12" r="1"/>',
   share: '<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.4M8.2 13.2l7.6 4.4"/>',
+  bell: '<path d="M6 9a6 6 0 1 1 12 0c0 5 2 6.5 2 6.5H4S6 14 6 9z"/><path d="M10 19a2 2 0 0 0 4 0"/>',
+  reply: '<path d="M9 7 4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 6 6v1"/>',
   contact: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="11" r="2.5"/><path d="M5.5 17c.6-1.8 2-2.8 3.5-2.8s2.9 1 3.5 2.8M15 9h3M15 13h3"/>',
 };
 const icon = (name, fill = false) =>
@@ -113,6 +115,9 @@ const ROUTES = [
   [/^messages$/, () => auth(() => messages(null))],
   [/^messages\/([\w-]+)$/, (id) => auth(() => messages(id))],
   [/^board$/, () => auth(() => board())],
+  [/^board\/([\w-]+)$/, (id) => auth(() => board(id))],
+  [/^forgot$/, () => (state.me ? go("#/") : forgotPage())],
+  [/^reset\/([\w-]+)$/, (token) => resetPage(token)],
   [/^privacy$/, () => privacy()],
   [/^admin$/, () => auth(() => (state.admin ? adminPage() : go("#/")))],
   [/^meet$/, () => auth(() => meetMe())],
@@ -200,7 +205,7 @@ function renderChrome() {
     const btn = $("#meBtn"), menu = $("#meMenu");
     btn.onclick = (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; btn.setAttribute("aria-expanded", String(!menu.hidden)); };
     menu.onclick = () => (menu.hidden = true);
-    $("#signOut").onclick = async () => { await api("POST", "/api/auth/logout").catch(() => {}); state.me = null; renderChrome(); go("#/signin"); toast("Signed out."); };
+    $("#signOut").onclick = async () => { await pushOff().catch(() => {}); await api("POST", "/api/auth/logout").catch(() => {}); state.me = null; renderChrome(); go("#/signin"); toast("Signed out."); };
   }
 }
 document.addEventListener("click", () => { const m = $("#meMenu"); if (m) m.hidden = true; });
@@ -364,6 +369,7 @@ function landing(mode) {
           <label class="field"><span>Password</span><input class="input" id="a-pass" name="password" type="password" autocomplete="${join ? "new-password" : "current-password"}" required minlength="8">${join ? '<span class="hint">At least 8 characters.</span>' : ""}</label>
           ${join ? `<label class="field"><span>Access code <span class="tiny">(from your invitation)</span></span><input class="input" id="a-code" name="code" autocomplete="off"></label>
           <label class="check"><input type="checkbox" name="agree" id="a-agree" required><span>I agree to the <a href="#/privacy" target="_blank" rel="noopener">privacy policy and terms</a>.</span></label>` : ""}
+          ${join ? "" : `<a class="forgot-link" href="#/forgot">Forgot your password?</a>`}
           <p class="form-error" id="authErr" role="alert"></p>
           <button class="btn btn-gold btn-block" type="submit">${join ? "Light up my star" : "Sign in"}</button>
           <p class="switch">${join ? 'Already joined? <button type="button" data-to="signin">Sign in</button>' : 'New here? <button type="button" data-to="join">Create your profile</button>'}</p>
@@ -413,6 +419,7 @@ async function home() {
         </div>
       </div>
 
+      <div id="pushNudge"></div>
       <a class="meet-card fade-in" href="#/meet"><span class="meet-ico">${icon(nfcState() === "on" ? "nfc" : "qr")}</span><span class="grow"><b>Meet in person</b><span>${nfcState() === "none" || !APP ? "Show your code, or scan someone else's, and you're connected." : "Tap phones together, or show your code, and you're connected."}</span></span><span class="arrow">→</span></a>
 
       ${!sug.profile_complete ? `<div class="nudge fade-in"><span><b>Complete your profile</b> so we can suggest the right principals: what you're working on, where you're strong, what you want to learn.</span><a class="btn btn-gold btn-sm" href="#/me/edit">Complete profile</a></div>` : ""}
@@ -437,6 +444,7 @@ async function home() {
   if (!ok) return;
   const root = view.firstElementChild;
   wireConnect(root, () => home());
+  pushNudge($("#pushNudge"));
   root.addEventListener("click", async (e) => {
     const b = e.target.closest("[data-act=why]");
     if (!b) return;
@@ -739,6 +747,10 @@ function editProfile() {
           <div><h3 style="font-size:1.1rem">Email notifications</h3><p class="tiny">Sent to ${esc(me.email)}. At most one email per conversation every two hours, and none while you're on the site.</p></div>
           <label class="check"><input type="checkbox" name="email_notify" id="e-notify" ${me.email_notify !== false ? "checked" : ""}><span>Email me about connection requests and new messages</span></label>
         </section>
+        <section class="panel-lg group">
+          <div><h3 style="font-size:1.1rem">Phone notifications</h3><p class="tiny">Connection requests, new messages and replies to your conversations on the board, on this device.</p></div>
+          <div id="pushBox">${loadingHTML}</div>
+        </section>
         <section class="panel-lg group danger-zone">
           <div><h3 style="font-size:1.1rem">Delete my account</h3><p class="tiny">Removes your profile, photo, connections, conversations and board posts for good. This can't be undone.</p></div>
           <div><button type="button" class="btn btn-quiet btn-sm danger" id="delAccount">Delete my account…</button></div>
@@ -791,6 +803,8 @@ function editProfile() {
   $("#photoDel")?.addEventListener("click", async () => {
     await api("DELETE", "/api/me/avatar").catch((err) => toast(err.message)); await refreshMe(); editProfile(); toast("Photo removed.");
   });
+
+  pushControl($("#pushBox"));
 
   $("#delAccount").onclick = () => {
     const d = document.createElement("dialog");
@@ -916,7 +930,7 @@ async function messages(withId) {
 // =============================================================
 const LANGS = { he: "Hebrew", ru: "Russian", es: "Spanish", fr: "French", pt: "Portuguese", de: "German", uk: "Ukrainian", it: "Italian", hu: "Hungarian", ar: "Arabic", nl: "Dutch" };
 
-async function board() {
+async function board(focus) {
   let data;
   const ok = await load(async () => {
     data = await api("GET", "/api/board");
@@ -924,7 +938,19 @@ async function board() {
     <div class="wrap section">
       <div class="section-head"><div><p class="label">The board</p><h2>Ask the whole constellation</h2></div></div>
       <div class="board">
-        <div class="stack" id="posts">${data.posts.length ? data.posts.map((p) => postHTML(p, data.me)).join("") : `<div class="empty" id="noPosts"><b>No posts yet.</b><span>Ask a question, share an idea, or offer help. Write in any language — it's translated to English for everyone.</span></div>`}</div>
+        <div class="board-main">
+          <div class="board-tools">
+            <div class="seg" role="radiogroup" aria-label="Show">
+              <label><input type="radio" name="bk" value="" id="bk-all" checked>All</label>
+              <label><input type="radio" name="bk" value="question" id="bk-q">Questions</label>
+              <label><input type="radio" name="bk" value="idea" id="bk-i">Ideas</label>
+              <label><input type="radio" name="bk" value="offer" id="bk-o">Offers</label>
+            </div>
+            <input class="input" id="bq" type="search" placeholder="Search the board" aria-label="Search the board">
+          </div>
+          <p class="tiny" id="boardNone" hidden>Nothing matches. Try another word or show all posts.</p>
+          <div class="stack" id="posts">${data.posts.length ? data.posts.map((p) => postHTML(p, data.me)).join("") : `<div class="empty" id="noPosts"><b>No posts yet.</b><span>Ask a question, share an idea, or offer help. Write in any language — it's translated to English for everyone.</span></div>`}</div>
+        </div>
         <form class="panel-lg compose" id="compose" novalidate>
           <button type="button" class="compose-open" id="composeOpen">${avatar(state.me, "sm")}<span class="grow">Ask, share an idea or offer help…</span><span class="plus" aria-hidden="true">+</span></button>
           <div class="compose-head"><div class="seg" role="radiogroup" aria-label="Post type">
@@ -952,14 +978,70 @@ async function board() {
     try {
       const { post } = await api("POST", "/api/board", { kind: fd.get("kind"), text });
       $("#noPosts")?.remove();
-      data.posts.unshift(post); list.insertAdjacentHTML("afterbegin", postHTML(post, state.me.id));
+      data.posts.unshift(post); list.insertAdjacentHTML("afterbegin", postHTML({ ...post, replies: 0 }, state.me.id));
       e.target.reset(); form.classList.remove("open"); toast(post.original ? `Posted, translated from ${LANGS[post.lang] || "your language"}.` : "Posted.");
     } catch (err) { toast(err.message); }
     btn.disabled = false; btn.textContent = "Post to the board";
   };
   wireConnect(root, () => {});
+
+  // Show: all / questions / ideas / offers, and search
+  const filter = () => {
+    const kind = $("[name=bk]:checked").value, q = $("#bq").value.trim().toLowerCase();
+    let shown = 0;
+    $$(".post", list).forEach((el) => {
+      const ok = (!kind || el.dataset.kind === kind) && (!q || el.textContent.toLowerCase().includes(q));
+      el.hidden = !ok; if (ok) shown++;
+    });
+    $("#boardNone").hidden = shown > 0 || !data.posts.length;
+  };
+  $$("[name=bk]").forEach((r) => (r.onchange = filter));
+  let ft; $("#bq").oninput = () => { clearTimeout(ft); ft = setTimeout(filter, 150); };
+
+  // Replies under a post
+  const openReplies = async (post, focusInput) => {
+    const box = $(".replies", post); box.hidden = false;
+    box.innerHTML = loadingHTML;
+    try {
+      const r = await api("GET", `/api/board/${post.dataset.id}/comments`);
+      box.innerHTML = `<div class="reply-list">${r.comments.map((c) => replyHTML(c, r.me, r.admin)).join("")}</div>
+        <form class="reply-form" novalidate>${avatar(state.me, "xs")}<textarea class="textarea" rows="1" maxlength="1000" dir="auto" placeholder="Write a reply…" aria-label="Reply"></textarea><button class="btn btn-primary btn-sm" type="submit">Reply</button></form>`;
+      const ta = $("textarea", box);
+      ta.addEventListener("input", () => { ta.style.height = "auto"; ta.style.height = `${Math.min(160, ta.scrollHeight)}px`; });
+      $(".reply-form", box).onsubmit = async (ev) => {
+        ev.preventDefault();
+        const text = ta.value.trim(); if (text.length < 2) { toast("Write a few words first."); return; }
+        const btn = ev.target.querySelector("button"); btn.disabled = true;
+        try {
+          const { comment } = await api("POST", `/api/board/${post.dataset.id}/comments`, { text });
+          $(".reply-list", box).insertAdjacentHTML("beforeend", replyHTML(comment, state.me.id, state.admin));
+          ta.value = ""; ta.style.height = "auto";
+          const n = $("[data-act=replies]", post); n.dataset.n = Number(n.dataset.n) + 1; n.innerHTML = repliesLabel(n.dataset.n, true);
+          toast(comment.original ? `Replied, translated from ${LANGS[comment.lang] || "your language"}.` : "Replied. Everyone in the conversation will be notified.");
+        } catch (err) { toast(err.message); }
+        btn.disabled = false;
+      };
+      if (focusInput) ta.focus();
+    } catch (err) { box.innerHTML = `<p class="tiny">${esc(err.message)}</p>`; }
+  };
+
   list.addEventListener("click", async (e) => {
     const t = e.target.closest("[data-act]"); if (!t) return;
+    if (t.dataset.act === "replies") {
+      const post = t.closest(".post"), box = $(".replies", post);
+      if (!box.hidden) { box.hidden = true; t.innerHTML = repliesLabel(t.dataset.n, false); return; }
+      t.innerHTML = repliesLabel(t.dataset.n, true); openReplies(post, true); return;
+    }
+    if (t.dataset.act === "replyOrig") { const o = t.closest(".reply").querySelector(".orig"); o.hidden = !o.hidden; return; }
+    if (t.dataset.act === "replyDel") {
+      if (!confirm("Remove this reply?")) return;
+      try {
+        await api("DELETE", `/api/board/comments/${t.dataset.id}`);
+        const post = t.closest(".post"); t.closest(".reply").remove();
+        const n = $("[data-act=replies]", post); n.dataset.n = Math.max(0, Number(n.dataset.n) - 1); n.innerHTML = repliesLabel(n.dataset.n, true);
+      } catch (err) { toast(err.message); }
+      return;
+    }
     if (t.dataset.act === "orig") {
       const o = $(".orig", t.closest(".post")); o.hidden = !o.hidden; t.textContent = t.textContent.replace(o.hidden ? "Hide" : "Show", o.hidden ? "Show" : "Hide");
     } else if (t.dataset.act === "report") {
@@ -988,6 +1070,17 @@ async function board() {
       }
     }
   });
+
+  // Opened from a notification or a link: show that post with its replies.
+  if (focus) {
+    const post = $(`.post[data-id="${CSS.escape(focus)}"]`, list);
+    if (post) {
+      post.classList.add("focus");
+      $("[data-act=replies]", post).innerHTML = repliesLabel($("[data-act=replies]", post).dataset.n, true);
+      await openReplies(post, false);
+      post.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    } else toast("That post was removed.");
+  }
 }
 
 /** Asks why a post is being reported. Resolves to the reason ("" is fine), or null if cancelled. */
@@ -1006,6 +1099,7 @@ function askReport() {
     d.addEventListener("click", (e) => { if (e.target === d) d.close("cancel"); });
     document.body.appendChild(d); d.showModal();
   });
+
 }
 
 // The reply button and its opening line follow the kind of post.
@@ -1015,18 +1109,159 @@ const REPLY = {
   offer: { label: "I'm interested", note: "I'd love to take you up on this." },
 };
 
+const repliesLabel = (n, open) => `${icon("reply")}${open ? "Hide replies" : Number(n) ? `${n} repl${Number(n) === 1 ? "y" : "ies"}` : "Reply"}`;
+
+function replyHTML(c, meId, admin) {
+  const a = c.author, mine = a.id === meId;
+  return `<div class="reply">${avatar(a, "xs")}<div class="reply-body">
+    <div class="reply-head"><a href="#/u/${esc(a.id)}">${esc(a.full_name)}</a><span class="tiny">${ago(c.at)}</span></div>
+    <p dir="auto">${esc(c.text)}</p>
+    ${c.original ? `<p class="orig" dir="auto" lang="${esc(c.lang)}" hidden>${esc(c.original)}</p><button class="linkish quiet" data-act="replyOrig" type="button">Translated from ${LANGS[c.lang] || "another language"} · original</button>` : ""}
+    ${mine || admin ? `<button class="linkish quiet" data-act="replyDel" data-id="${esc(c.id)}" type="button">${mine ? "Delete" : "Remove"}</button>` : ""}
+  </div></div>`;
+}
+
 function postHTML(p, meId) {
   const a = p.author, mine = a.id === meId;
-  return `<article class="post fade-in">
+  return `<article class="post fade-in" data-id="${esc(p.id)}" data-kind="${esc(p.kind)}">
     <div class="head">${avatar(a, "sm")}<div class="who"><span><a href="#/u/${esc(a.id)}">${esc(a.full_name)}</a></span><span>${esc(where(a))}${where(a) ? " · " : ""}${ago(p.at)}</span></div><span class="kind ${esc(p.kind)}">${KIND_NAMES[p.kind] || "Post"}</span></div>
     <p class="text" dir="auto">${esc(p.text)}</p>
     ${p.original ? `<p class="orig" dir="auto" lang="${esc(p.lang)}" hidden>${esc(p.original)}</p>` : ""}
     <div class="foot">
       ${mine ? `<button class="linkish" data-act="del" data-id="${esc(p.id)}">Delete</button>` : `<button class="btn btn-soft btn-sm" data-act="help" data-id="${esc(p.id)}">${(REPLY[p.kind] || REPLY.question).label}</button>`}
+      <button class="btn btn-quiet btn-sm reply-btn" data-act="replies" data-n="${p.replies || 0}" type="button">${repliesLabel(p.replies || 0, false)}</button>
       ${p.original ? `<button class="linkish" data-act="orig">Translated from ${LANGS[p.lang] || "another language"} · Show original</button>` : ""}
       <span class="foot-end">${mine ? "" : `<button class="linkish quiet" data-act="report" data-id="${esc(p.id)}">Report</button>`}${state.admin && !mine ? `<button class="linkish quiet" data-act="adminDel" data-id="${esc(p.id)}">Remove</button>` : ""}</span>
     </div>
+    <div class="replies" hidden></div>
   </article>`;
+}
+
+// =============================================================
+// forgot password
+// =============================================================
+function forgotPage() {
+  view.innerHTML = `
+  <div class="wrap section narrow fade-in">
+    <form class="panel-lg stack" id="forgotForm" novalidate>
+      <p class="label">Your account</p>
+      <h2 class="display" style="font-size:2.2rem">Forgot your password?</h2>
+      <p class="muted">Enter the email you joined with. We'll send you a link to choose a new password.</p>
+      <label class="field"><span>Email</span><input class="input" id="f-email" name="email" type="email" autocomplete="email" required></label>
+      <p class="form-error" id="forgotErr" role="alert"></p>
+      <button class="btn btn-gold btn-block" type="submit">Send me a link</button>
+      <a class="btn btn-quiet btn-sm" href="#/signin">← Back to sign in</a>
+    </form>
+  </div>`;
+  $("#forgotForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector("[type=submit]"), err = $("#forgotErr");
+    btn.disabled = true; err.textContent = "";
+    try {
+      await api("POST", "/api/auth/forgot", { email: $("#f-email").value });
+      e.target.innerHTML = `<p class="label">Check your email</p><h2 class="display" style="font-size:2.2rem">A link is on its way</h2>
+        <p class="muted">If there's an account for <b>${esc($("#f-email")?.value || "that email")}</b>, you'll get an email with a link to choose a new password. It works for one hour. Can't find it? Look in spam or promotions.</p>
+        <a class="btn btn-soft" href="#/signin">Back to sign in</a>`;
+    } catch (ex) { err.textContent = ex.message; btn.disabled = false; }
+  };
+}
+
+function resetPage(token) {
+  view.innerHTML = `
+  <div class="wrap section narrow fade-in">
+    <form class="panel-lg stack" id="resetForm" novalidate>
+      <p class="label">Your account</p>
+      <h2 class="display" style="font-size:2.2rem">Choose a new password</h2>
+      <label class="field"><span>New password</span><input class="input" id="r-pass" type="password" autocomplete="new-password" minlength="8" required><span class="hint">At least 8 characters.</span></label>
+      <label class="field"><span>Repeat it</span><input class="input" id="r-pass2" type="password" autocomplete="new-password" minlength="8" required></label>
+      <p class="form-error" id="resetErr" role="alert"></p>
+      <button class="btn btn-gold btn-block" type="submit">Save and sign in</button>
+    </form>
+  </div>`;
+  $("#resetForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector("[type=submit]"), err = $("#resetErr"), pw = $("#r-pass").value;
+    if (pw !== $("#r-pass2").value) { err.textContent = "The two passwords don't match."; return; }
+    btn.disabled = true; err.textContent = "";
+    try {
+      await api("POST", "/api/auth/reset", { token, password: pw });
+      await refreshMe(); go("#/"); toast("Your new password is saved. Other devices were signed out.");
+    } catch (ex) { err.innerHTML = `${esc(ex.message)} <a href="#/forgot">Get a new link</a>`; btn.disabled = false; }
+  };
+}
+
+// =============================================================
+// phone notifications
+// =============================================================
+// Browsers and home-screen apps use Web Push; the Android app checks in the background itself.
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+
+/** "on" | "off" | "denied" | "install" (iPhone: add to home screen first) | "unsupported" */
+async function pushState() {
+  if (APP) { try { return window.Android.notifState ? window.Android.notifState() : "unsupported"; } catch { return "unsupported"; } }
+  if (isIOS && !standalone) return "install";
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return "unsupported";
+  if (Notification.permission === "denied") return "denied";
+  const reg = await navigator.serviceWorker.getRegistration();
+  const sub = reg && (await reg.pushManager.getSubscription());
+  return sub && Notification.permission === "granted" ? "on" : "off";
+}
+
+async function pushOn() {
+  if (APP) { window.Android.enableNotifications(); return; }
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") throw new Error(perm === "denied" ? "Notifications are blocked for this site in your browser settings." : "Notifications weren't turned on.");
+  const reg = (await navigator.serviceWorker.getRegistration()) || (await navigator.serviceWorker.register("/sw.js"));
+  await navigator.serviceWorker.ready;
+  const { key } = await api("GET", "/api/push/key");
+  const raw = Uint8Array.from(atob(key.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (key.length % 4)) % 4)), (c) => c.charCodeAt(0));
+  const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: raw }));
+  await api("POST", "/api/push", { endpoint: sub.endpoint });
+}
+
+async function pushOff() {
+  if (APP || !("serviceWorker" in navigator)) return;
+  const reg = await navigator.serviceWorker.getRegistration();
+  const sub = reg && (await reg.pushManager.getSubscription());
+  if (!sub) return;
+  await api("DELETE", "/api/push", { endpoint: sub.endpoint }).catch(() => {});
+  await sub.unsubscribe().catch(() => {});
+}
+
+const PUSH_TEXT = {
+  on: "On for this device.",
+  off: "Get a notification on this device when someone wants to connect, sends you a message or replies to you.",
+  denied: "Notifications are blocked for this site. Allow them in your browser's site settings, then come back.",
+  install: "On iPhone, first add the site to your Home Screen (Share → Add to Home Screen), open it from there, and turn notifications on.",
+  unsupported: "This browser can't show notifications. Try Chrome, Edge, Firefox or Safari, or the Android app.",
+};
+
+/** The switch in Edit profile. */
+async function pushControl(box) {
+  const paint = async () => {
+    const st = await pushState();
+    box.innerHTML = `<p class="small ${st === "on" ? "" : "muted"}">${st === "on" ? `${icon("bell")}` : ""}${PUSH_TEXT[st]}</p>
+      ${st === "on" && !APP ? `<button type="button" class="btn btn-quiet btn-sm" id="pushOffBtn">Turn off on this device</button>` : ""}
+      ${st === "off" ? `<button type="button" class="btn btn-gold btn-sm" id="pushOnBtn">${icon("bell")}Turn on notifications</button>` : ""}`;
+    $("#pushOnBtn", box)?.addEventListener("click", async () => { try { await pushOn(); toast("Notifications are on."); } catch (e) { toast(e.message); } setTimeout(paint, APP ? 1200 : 0); });
+    $("#pushOffBtn", box)?.addEventListener("click", async () => { await pushOff(); toast("Notifications are off on this device."); paint(); });
+  };
+  paint();
+  const onVis = () => { if (!document.hidden) paint(); };
+  document.addEventListener("visibilitychange", onVis); onLeave(() => document.removeEventListener("visibilitychange", onVis));
+}
+
+/** A one-time invitation on the home page, until turned on or dismissed. */
+async function pushNudge(box) {
+  if (!box) return;
+  let dismissed = false; try { dismissed = localStorage.getItem("pushNudge") === "no"; } catch { /* ignore */ }
+  const st = await pushState();
+  if (dismissed || !["off", "install"].includes(st)) return;
+  box.innerHTML = `<div class="push-nudge fade-in">${icon("bell")}<span class="grow"><b>Get notified on your phone</b><span>${st === "install" ? PUSH_TEXT.install : "Know right away when someone wants to connect, messages you or replies to you."}</span></span>
+    ${st === "off" ? `<button class="btn btn-gold btn-sm" id="nudgeOn" type="button">Turn on</button>` : ""}<button class="btn btn-quiet btn-sm" id="nudgeNo" type="button" aria-label="Not now">Not now</button></div>`;
+  $("#nudgeOn", box)?.addEventListener("click", async () => { try { await pushOn(); toast("Notifications are on."); box.innerHTML = ""; } catch (e) { toast(e.message); } });
+  $("#nudgeNo", box).onclick = () => { try { localStorage.setItem("pushNudge", "no"); } catch { /* ignore */ } box.innerHTML = ""; };
 }
 
 // =============================================================
@@ -1269,6 +1504,7 @@ async function adminPage(tab = "members") {
         <div class="seg" role="radiogroup" aria-label="Section">
           <label><input type="radio" name="at" value="members" id="at-m" ${tab === "members" ? "checked" : ""}>Members</label>
           <label><input type="radio" name="at" value="reports" id="at-r" ${tab === "reports" ? "checked" : ""}>Reports${c.reports ? ` (${c.reports})` : ""}</label>
+          <label><input type="radio" name="at" value="impact" id="at-i" ${tab === "impact" ? "checked" : ""}>Impact</label>
         </div></div>
       <div class="stat-row" style="margin-bottom:18px">
         <div class="stat"><b>${c.members}</b><span>members</span></div>
@@ -1305,7 +1541,7 @@ async function adminPage(tab = "members") {
       </div>`).join("")}</div>` : `<div class="empty"><b>No open reports.</b><span>When a member reports a board post, it shows up here.</span></div>`;
   };
 
-  const show = (t) => (t === "reports" ? reports() : members());
+  const show = (t) => (t === "reports" ? reports() : t === "impact" ? impactView(body) : members());
   $$("[name=at]").forEach((r) => (r.onchange = () => { tab = r.value; show(tab); }));
   show(tab);
 
@@ -1331,6 +1567,136 @@ async function adminPage(tab = "members") {
       adminPage(tab);
     } catch (err) { toast(err.message); }
   });
+}
+
+// ---------- impact (admin only) ----------
+const fmt = (n) => Number(n).toLocaleString();
+const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+const svgEsc = (t) => esc(t);
+
+/** Line chart: members and connections over time. One axis, two series, legend + end labels, crosshair tooltip. */
+function growthChart(rows) {
+  const W = 640, H = 230, L = 36, R = 92, T = 14, B = 26;
+  const max = Math.max(1, ...rows.map((r) => Math.max(r.members, r.connections)));
+  const t0 = rows[0].t, t1 = rows[rows.length - 1].t || t0 + 1;
+  const x = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R), y = (v) => T + (1 - v / max) * (H - T - B);
+  const line = (k) => rows.map((r, i) => `${i ? "L" : "M"}${x(r.t).toFixed(1)} ${y(r[k]).toFixed(1)}`).join("");
+  const ticks = [0, Math.round(max / 2), max];
+  const date = (t) => new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const last = rows[rows.length - 1];
+  return `<div class="viz" data-chart="growth">
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Members and connections over time">
+      ${ticks.map((v) => `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text class="ax" x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${fmt(v)}</text>`).join("")}
+      <text class="ax" x="${L}" y="${H - 6}">${date(t0)}</text><text class="ax" x="${W - R}" y="${H - 6}" text-anchor="end">${date(t1)}</text>
+      <path class="s1" d="${line("connections")}"/><path class="s2" d="${line("members")}"/>
+      <circle class="d1" cx="${x(last.t)}" cy="${y(last.connections)}" r="4"/><circle class="d2" cx="${x(last.t)}" cy="${y(last.members)}" r="4"/>
+      <text class="lab" x="${x(last.t) + 10}" y="${y(last.connections) + 4}">${fmt(last.connections)} connections</text>
+      <text class="lab" x="${x(last.t) + 10}" y="${y(last.members) + (Math.abs(y(last.members) - y(last.connections)) < 14 ? 16 : 4)}">${fmt(last.members)} members</text>
+      <line class="cross" x1="0" x2="0" y1="${T}" y2="${H - B}" hidden/>
+      <rect class="hit" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>
+    </svg><div class="viz-tip" hidden></div></div>`;
+}
+
+/** Dumbbell: per topic, how many want to learn it (gold) vs can teach it (blue). */
+function topicsChart(topics) {
+  const rows = [...topics].sort((a, b) => b.seek - a.seek || b.give - a.give);
+  const max = Math.max(1, ...rows.map((r) => Math.max(r.seek, r.give)));
+  const W = 640, L = 210, R = 40, rowH = 30, H = rows.length * rowH + 10;
+  const x = (v) => L + (v / max) * (W - L - R);
+  return `<div class="viz"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Topics: wanting to learn versus able to teach">
+    ${rows.map((r, i) => { const cy = i * rowH + 20, gap = r.seek - r.give;
+      return `<g class="row" data-tip="${svgEsc(r.label)}: ${r.seek} want to learn · ${r.give} can teach${gap > 0 ? ` · gap ${gap}` : ""}">
+        <rect class="hit" x="0" y="${cy - rowH / 2}" width="${W}" height="${rowH}" fill="transparent"/>
+        <text class="lab-l" x="${L - 12}" y="${cy + 4}" text-anchor="end">${svgEsc(r.label)}</text>
+        <line class="grid" x1="${L}" x2="${W - R}" y1="${cy}" y2="${cy}"/>
+        <line class="bar" x1="${x(Math.min(r.seek, r.give))}" x2="${x(Math.max(r.seek, r.give))}" y1="${cy}" y2="${cy}"/>
+        <circle class="d2" cx="${x(r.give)}" cy="${cy}" r="5"/><circle class="d1" cx="${x(r.seek)}" cy="${cy}" r="5"/>
+      </g>`; }).join("")}
+  </svg><div class="viz-tip" hidden></div></div>`;
+}
+
+/** Ranked horizontal bars, one series. */
+function barsChart(items, unit) {
+  if (!items.length) return `<p class="tiny">Not enough connections yet.</p>`;
+  const max = Math.max(1, ...items.map((r) => r.v));
+  const W = 640, L = 230, R = 50, rowH = 28, H = items.length * rowH + 4;
+  const x = (v) => (v / max) * (W - L - R);
+  return `<div class="viz"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Ranked ${unit}">
+    ${items.map((r, i) => { const yy = i * rowH + 4;
+      return `<g class="row" data-tip="${svgEsc(r.k)}: ${fmt(r.v)} ${unit}">
+        <rect class="hit" x="0" y="${yy}" width="${W}" height="${rowH}" fill="transparent"/>
+        <text class="lab-l" x="${L - 12}" y="${yy + rowH / 2 + 4}" text-anchor="end">${svgEsc(r.k)}</text>
+        <rect class="b1" x="${L}" y="${yy + 6}" width="${Math.max(2, x(r.v))}" height="${rowH - 12}" rx="3"/>
+        <text class="val" x="${L + Math.max(2, x(r.v)) + 8}" y="${yy + rowH / 2 + 4}">${fmt(r.v)}</text>
+      </g>`; }).join("")}
+  </svg><div class="viz-tip" hidden></div></div>`;
+}
+
+function wireTips(root, growth) {
+  $$(".viz", root).forEach((viz) => {
+    const tip = $(".viz-tip", viz), svg = $("svg", viz);
+    const place = (e, html) => { tip.innerHTML = html; tip.hidden = false; const r = viz.getBoundingClientRect(); tip.style.left = `${Math.min(r.width - 10, Math.max(10, e.clientX - r.left))}px`; tip.style.top = `${e.clientY - r.top}px`; };
+    viz.addEventListener("pointerleave", () => { tip.hidden = true; const c = $(".cross", svg); if (c) c.setAttribute("hidden", ""); });
+    if (viz.dataset.chart === "growth") {
+      const vb = svg.viewBox.baseVal, L = 36, R = 92, t0 = growth[0].t, t1 = growth[growth.length - 1].t;
+      svg.addEventListener("pointermove", (e) => {
+        const r = svg.getBoundingClientRect(), sx = ((e.clientX - r.left) / r.width) * vb.width;
+        const t = t0 + ((sx - L) / (vb.width - L - R)) * (t1 - t0);
+        const row = growth.reduce((a, b) => (Math.abs(b.t - t) < Math.abs(a.t - t) ? b : a));
+        const cx = L + ((row.t - t0) / Math.max(1, t1 - t0)) * (vb.width - L - R), c = $(".cross", svg);
+        c.removeAttribute("hidden"); c.setAttribute("x1", cx); c.setAttribute("x2", cx);
+        place(e, `<b>${new Date(row.t).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</b><span><i class="k1"></i>${fmt(row.connections)} connections</span><span><i class="k2"></i>${fmt(row.members)} members</span>`);
+      });
+    } else {
+      svg.addEventListener("pointermove", (e) => { const g = e.target.closest(".row"); if (g) place(e, esc(g.dataset.tip)); else tip.hidden = true; });
+    }
+  });
+}
+
+async function impactView(box) {
+  box.innerHTML = loadingHTML;
+  let d;
+  try { d = await api("GET", "/api/admin/impact"); } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  const t = d.totals;
+  const tile = (num, label, sub = "") => `<div class="bento-tile impact-tile"><b class="bento-num">${num}</b><span class="label">${label}</span>${sub ? `<span class="tiny">${sub}</span>` : ""}</div>`;
+  box.innerHTML = `
+  <div class="impact">
+    <p class="muted small">The network's impact, for the foundation's reports. Only the foundation team sees this page.</p>
+    <div class="impact-tiles">
+      ${tile(`${fmt(t.schools_joined)}<small>/${fmt(t.schools)}</small>`, "Schools joined", `${pct(t.schools_joined, t.schools)}% of the network · ${fmt(t.members)} principals`)}
+      ${tile(fmt(t.countries), "Countries", "with at least one principal")}
+      ${tile(fmt(t.connections), "Connections", `${fmt(t.avg_connections)} per principal · ${fmt(t.pending)} waiting`)}
+      ${tile(`${pct(t.cross_border, t.connections)}%`, "Across borders", `${fmt(t.cross_border)} connections between countries`)}
+      ${tile(fmt(t.met_in_person), "Met in person", "connected by code or tap")}
+      ${tile(fmt(t.conversations), "Conversations", `${fmt(t.messages)} messages`)}
+      ${tile(`${pct(t.answered, t.posts)}%`, "Board posts answered", `${fmt(t.answered)} of ${fmt(t.posts)} · ${fmt(t.replies)} replies`)}
+    </div>
+
+    <section class="panel impact-panel">
+      <div class="impact-h"><h3>Growth</h3><span class="legend-inline"><i class="k1"></i>Connections <i class="k2"></i>Members</span></div>
+      ${growthChart(d.growth)}
+      <details class="tiny"><summary>Show as a table</summary><table class="viz-table"><thead><tr><th>Date</th><th>Members</th><th>Connections</th></tr></thead><tbody>
+        ${d.growth.map((r) => `<tr><td>${new Date(r.t).toLocaleDateString()}</td><td>${fmt(r.members)}</td><td>${fmt(r.connections)}</td></tr>`).join("")}</tbody></table></details>
+    </section>
+
+    <section class="panel impact-panel">
+      <div class="impact-h"><h3>What principals want to learn vs. can teach</h3><span class="legend-inline"><i class="k1"></i>Want to learn <i class="k2"></i>Can teach</span></div>
+      <p class="tiny">Where gold is far right of blue, the network needs more expertise: a good topic for a summit session or an outside speaker.</p>
+      ${topicsChart(d.topics)}
+    </section>
+
+    <div class="impact-two">
+      <section class="panel impact-panel"><div class="impact-h"><h3>Strongest links between countries</h3></div>${barsChart(d.pairs, "connections")}</section>
+      <section class="panel impact-panel"><div class="impact-h"><h3>Most connected countries</h3></div>${barsChart(d.countries, "connections")}</section>
+    </div>
+
+    <section class="panel impact-panel">
+      <div class="impact-h"><h3>Connectors</h3><span class="tiny">The principals who bring the network together</span></div>
+      ${d.connectors.length ? `<table class="viz-table"><thead><tr><th>Principal</th><th>School</th><th>Country</th><th>Connections</th></tr></thead><tbody>
+        ${d.connectors.map((c) => `<tr><td><a href="#/u/${esc(c.id)}">${esc(c.name)}</a></td><td>${esc(c.school)}</td><td>${esc(c.country)}</td><td>${fmt(c.n)}</td></tr>`).join("")}</tbody></table>` : `<p class="tiny">No connections yet.</p>`}
+    </section>
+  </div>`;
+  wireTips(box, d.growth);
 }
 
 /** Admin: choose another school for a member. Resolves to a school id, null to unlink, or undefined if cancelled. */

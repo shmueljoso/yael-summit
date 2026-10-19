@@ -6,6 +6,7 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
@@ -42,6 +43,7 @@ import android.widget.FrameLayout;
 public class MainActivity extends Activity {
     private static final int FILE_REQUEST = 1001;
     private static final int CAMERA_REQUEST = 1002;
+    private static final int NOTIFY_REQUEST = 1003;
     private static final String HOME = BuildConfig.SITE_URL + "/";
 
     private WebView web;
@@ -84,6 +86,8 @@ public class MainActivity extends Activity {
         if (state != null) web.restoreState(state);
         else web.loadUrl(startUrl(getIntent()));
         addShortcuts();
+        NotifyJob.createChannel(this);
+        NotifyJob.schedule(this);
     }
 
     /** Long-press the app icon: "My code" and "Scan a code". */
@@ -263,6 +267,30 @@ public class MainActivity extends Activity {
             return true;
         }
 
+        /** Phone notifications: "on" or "off". */
+        @JavascriptInterface
+        public String notifState() { return NotifyJob.allowed(MainActivity.this) ? "on" : "off"; }
+
+        /** Asks Android for permission (13+), or opens the app's notification settings if it was refused. */
+        @JavascriptInterface
+        public void enableNotifications() {
+            runOnUiThread(() -> {
+                SharedPreferences prefs = getSharedPreferences("notify", MODE_PRIVATE);
+                boolean asked = prefs.getBoolean("asked", false);
+                if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                        && (!asked || shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS))) {
+                    prefs.edit().putBoolean("asked", true).apply();
+                    requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, NOTIFY_REQUEST);
+                } else if (!NotifyJob.allowed(MainActivity.this)) {
+                    Intent settings = Build.VERSION.SDK_INT >= 26
+                        ? new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName())
+                        : new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()));
+                    try { startActivity(settings); } catch (ActivityNotFoundException ignored) { }
+                }
+                NotifyJob.schedule(MainActivity.this);
+            });
+        }
+
         @JavascriptInterface
         public void nfcStop() {
             runOnUiThread(() -> { sharingUrl = null; stopNfcSharing(); });
@@ -323,6 +351,7 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         resumed = false;
+        NotifyJob.appOnScreen = false;
         stopNfcSharing();                         // only share while the app is on screen
         CookieManager.getInstance().flush();
         web.onPause();
@@ -332,6 +361,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         resumed = true;
+        NotifyJob.appOnScreen = true;
         if (sharingUrl != null) startNfcSharing();
         web.onResume();
     }

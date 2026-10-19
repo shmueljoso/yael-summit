@@ -3,7 +3,7 @@
  * and reviewing reported board posts. Only for emails listed in the ADMIN_EMAILS secret.
  */
 import { json, error, clip } from "../lib/http.js";
-import { db, requireAdmin, deleteUserData } from "../lib/db.js";
+import { db, requireAdmin, deleteUserData, TOPICS } from "../lib/db.js";
 
 /** GET /api/admin — members, open reports and a few numbers. */
 export async function overview({ request, env }) {
@@ -60,6 +60,7 @@ export async function removePost({ request, env, params }) {
   const d = await db(env);
   await d.batch([
     d.prepare("DELETE FROM reports WHERE post_id = ?").bind(params.id),
+    d.prepare("DELETE FROM comments WHERE post_id = ?").bind(params.id),
     d.prepare("DELETE FROM posts WHERE id = ?").bind(params.id),
   ]);
   return json({ ok: true });
@@ -70,4 +71,82 @@ export async function dismissReport({ request, env, params }) {
   await requireAdmin(env, request);
   await (await db(env)).prepare("DELETE FROM reports WHERE id = ?").bind(params.id).run();
   return json({ ok: true });
+}
+
+/**
+ * GET /api/admin/impact — the network's impact, for the foundation (admin only).
+ * Growth over time, connections across borders, what principals want to learn versus can teach,
+ * conversations and the board.
+ */
+export async function impact({ request, env }) {
+  await requireAdmin(env, request);
+  const d = await db(env);
+  const [{ results: users }, { results: conns }, msgs, posts, schools, { results: kinds }] = await Promise.all([
+    d.prepare("SELECT id, full_name, school, country, school_id, topics, gives, seeks, created_at FROM users").all(),
+    d.prepare("SELECT a, b, status, note, created_at, accepted_at FROM connections").all(),
+    d.prepare("SELECT COUNT(*) n, COUNT(DISTINCT pair) pairs FROM messages").first(),
+    d.prepare(`SELECT COUNT(*) n, (SELECT COUNT(*) FROM comments) replies,
+      (SELECT COUNT(*) FROM posts p WHERE EXISTS (SELECT 1 FROM comments c WHERE c.post_id = p.id AND c.user_id != p.user_id)) answered FROM posts`).first(),
+    d.prepare("SELECT COUNT(*) n, (SELECT COUNT(DISTINCT school_id) FROM users WHERE school_id IS NOT NULL) joined FROM schools").first(),
+    d.prepare("SELECT kind, COUNT(*) n FROM posts GROUP BY kind").all(),
+  ]);
+  const parse = (s) => { try { return JSON.parse(s) || []; } catch { return []; } };
+  const byId = new Map(users.map((u) => [u.id, u]));
+  const accepted = conns.filter((c) => c.status === "accepted");
+  const country = (id) => (byId.get(id)?.country || "").trim();
+
+  // Growth by week: members joined and connections made (cumulative).
+  const WEEK = 7 * 864e5;
+  const first = Math.min(...users.map((u) => u.created_at), Date.now());
+  const weeks = Math.max(1, Math.ceil((Date.now() - first) / WEEK));
+  const step = Math.max(1, Math.ceil(weeks / 26));
+  const growth = [];
+  for (let w = 0; w <= weeks; w += step) {
+    const t = first + w * WEEK;
+    growth.push({ t, members: users.filter((u) => u.created_at <= t).length, connections: accepted.filter((c) => (c.accepted_at || c.created_at) <= t).length });
+  }
+  growth.push({ t: Date.now(), members: users.length, connections: accepted.length });
+
+  // Across borders: country pairs, and how connected each country is.
+  const pairs = new Map(), degree = new Map();
+  let cross = 0;
+  for (const c of accepted) {
+    const x = country(c.a), y = country(c.b);
+    for (const k of [x, y]) if (k) degree.set(k, (degree.get(k) || 0) + 1);
+    if (x && y && x.toLowerCase() !== y.toLowerCase()) {
+      cross++;
+      const key = [x, y].sort().join(" ↔ ");
+      pairs.set(key, (pairs.get(key) || 0) + 1);
+    }
+  }
+  const top = (m, n) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => ({ k, v }));
+
+  // What principals want to learn (demand) versus what they can teach (supply).
+  const demand = new Map(), supply = new Map(), working = new Map();
+  for (const u of users) {
+    for (const t of parse(u.seeks)) demand.set(t, (demand.get(t) || 0) + 1);
+    for (const t of parse(u.gives)) supply.set(t, (supply.get(t) || 0) + 1);
+    for (const t of parse(u.topics)) working.set(t, (working.get(t) || 0) + 1);
+  }
+  const topics = Object.entries(TOPICS).map(([k, label]) => ({ k, label, seek: demand.get(k) || 0, give: supply.get(k) || 0, work: working.get(k) || 0 }));
+
+  // Most connected principals.
+  const deg = new Map();
+  for (const c of accepted) for (const id of [c.a, c.b]) deg.set(id, (deg.get(id) || 0) + 1);
+  const connectors = [...deg.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8)
+    .map(([id, n]) => ({ id, name: byId.get(id)?.full_name || "—", school: byId.get(id)?.school || "", country: country(id), n }));
+
+  const countries = new Set(users.map((u) => (u.country || "").trim().toLowerCase()).filter(Boolean));
+  return json({
+    totals: {
+      members: users.length, schools: schools?.n || 0, schools_joined: schools?.joined || 0, countries: countries.size,
+      connections: accepted.length, pending: conns.length - accepted.length, cross_border: cross,
+      met_in_person: accepted.filter((c) => /in person/i.test(c.note || "")).length,
+      messages: msgs?.n || 0, conversations: msgs?.pairs || 0,
+      posts: posts?.n || 0, replies: posts?.replies || 0, answered: posts?.answered || 0,
+      avg_connections: users.length ? Math.round((accepted.length * 2 / users.length) * 10) / 10 : 0,
+    },
+    growth, pairs: top(pairs, 10), countries: top(degree, 12), topics, connectors,
+    posts_by_kind: Object.fromEntries(kinds.map((r) => [r.kind, r.n])),
+  });
 }
