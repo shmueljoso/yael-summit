@@ -683,3 +683,21 @@ button.chip:hover { color: var(--text); border-color: var(--text-3); }
 .viz-table td:last-child, .viz-table th:last-child { text-align: end; font-variant-numeric: tabular-nums; }
 details.tiny summary { cursor: pointer; color: var(--text-2); }
 details.tiny .viz-table { margin-top: 8px; }
+/* horizontal charts as HTML rows */
+.hviz { display: grid; gap: 4px; }
+.hrow { display: grid; grid-template-columns: minmax(110px, 38%) minmax(0, 1fr); gap: 12px; align-items: center; min-height: 28px; border-radius: 6px; }
+.hrow:hover { background: var(--surface-2); }
+.hlab { font-size: .85rem; color: var(--text-2); text-align: end; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hrow:hover .hlab { color: var(--text); }
+.htrack { position: relative; height: 22px; margin-inline-end: 34px; }
+.htrack::before { content: ""; position: absolute; inset-inline: 0; top: 50%; height: 1px; background: var(--line); }
+.hbar { position: absolute; top: calc(50% - 1.5px); height: 3px; border-radius: 2px; background: var(--line-strong); }
+.hdot { position: absolute; top: 50%; width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; border-radius: 50%; box-shadow: 0 0 0 2px var(--surface-solid); }
+.hdot.d1 { background: var(--viz-1); } .hdot.d2 { background: var(--viz-2); }
+.hfill { position: absolute; inset-inline-start: 0; top: 5px; bottom: 5px; min-width: 2px; border-radius: 0 4px 4px 0; background: var(--viz-1); }
+.hval { position: absolute; top: 50%; transform: translateY(-50%); inset-inline-start: calc(var(--w, 0%) + 6px); font: 500 .75rem var(--f-mono); color: var(--text); }
+@media (max-width: 640px) {
+  .viz[data-chart="growth"] .ax, .viz[data-chart="growth"] .lab { font-size: 22px; }
+  .hrow { grid-template-columns: minmax(90px, 42%) minmax(0, 1fr); gap: 8px; }
+}
+@media (max-width: 640px) { .impact-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } .impact-tile { padding: 16px; } .impact-tile .bento-num { font-size: 1.9rem; } }

@@ -95,17 +95,14 @@ export async function impact({ request, env }) {
   const accepted = conns.filter((c) => c.status === "accepted");
   const country = (id) => (byId.get(id)?.country || "").trim();
 
-  // Growth by week: members joined and connections made (cumulative).
-  const WEEK = 7 * 864e5;
-  const first = Math.min(...users.map((u) => u.created_at), Date.now());
-  const weeks = Math.max(1, Math.ceil((Date.now() - first) / WEEK));
-  const step = Math.max(1, Math.ceil(weeks / 26));
+  // Growth: members joined and connections made (cumulative), at 24 even points up to today.
+  const now = Date.now();
+  const first = Math.min(now - 864e5, ...users.map((u) => u.created_at));
   const growth = [];
-  for (let w = 0; w <= weeks; w += step) {
-    const t = first + w * WEEK;
+  for (let i = 0; i < 24; i++) {
+    const t = Math.round(first + ((now - first) * i) / 23);
     growth.push({ t, members: users.filter((u) => u.created_at <= t).length, connections: accepted.filter((c) => (c.accepted_at || c.created_at) <= t).length });
   }
-  growth.push({ t: Date.now(), members: users.length, connections: accepted.length });
 
   // Across borders: country pairs, and how connected each country is.
   const pairs = new Map(), degree = new Map();

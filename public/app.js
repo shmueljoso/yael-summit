@@ -1597,44 +1597,35 @@ function growthChart(rows) {
     </svg><div class="viz-tip" hidden></div></div>`;
 }
 
-/** Dumbbell: per topic, how many want to learn it (gold) vs can teach it (blue). */
+/** Dumbbell: per topic, how many want to learn it (gold) vs can teach it (blue). HTML rows, so text stays readable at any width. */
 function topicsChart(topics) {
   const rows = [...topics].sort((a, b) => b.seek - a.seek || b.give - a.give);
   const max = Math.max(1, ...rows.map((r) => Math.max(r.seek, r.give)));
-  const W = 640, L = 210, R = 40, rowH = 30, H = rows.length * rowH + 10;
-  const x = (v) => L + (v / max) * (W - L - R);
-  return `<div class="viz"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Topics: wanting to learn versus able to teach">
-    ${rows.map((r, i) => { const cy = i * rowH + 20, gap = r.seek - r.give;
-      return `<g class="row" data-tip="${svgEsc(r.label)}: ${r.seek} want to learn · ${r.give} can teach${gap > 0 ? ` · gap ${gap}` : ""}">
-        <rect class="hit" x="0" y="${cy - rowH / 2}" width="${W}" height="${rowH}" fill="transparent"/>
-        <text class="lab-l" x="${L - 12}" y="${cy + 4}" text-anchor="end">${svgEsc(r.label)}</text>
-        <line class="grid" x1="${L}" x2="${W - R}" y1="${cy}" y2="${cy}"/>
-        <line class="bar" x1="${x(Math.min(r.seek, r.give))}" x2="${x(Math.max(r.seek, r.give))}" y1="${cy}" y2="${cy}"/>
-        <circle class="d2" cx="${x(r.give)}" cy="${cy}" r="5"/><circle class="d1" cx="${x(r.seek)}" cy="${cy}" r="5"/>
-      </g>`; }).join("")}
-  </svg><div class="viz-tip" hidden></div></div>`;
+  const x = (v) => `${(v / max) * 100}%`;
+  return `<div class="viz hviz" role="table" aria-label="Topics: wanting to learn versus able to teach">
+    ${rows.map((r) => { const gap = r.seek - r.give, lo = Math.min(r.seek, r.give), hi = Math.max(r.seek, r.give);
+      return `<div class="row hrow" role="row" data-tip="${esc(r.label)}: ${r.seek} want to learn · ${r.give} can teach${gap > 0 ? ` · gap ${gap}` : ""}">
+        <span class="hlab" role="rowheader">${esc(r.label)}</span>
+        <span class="htrack" role="cell" aria-label="${r.seek} want to learn, ${r.give} can teach"><i class="hbar" style="left:${x(lo)};width:calc(${x(hi)} - ${x(lo)})"></i><i class="hdot d2" style="left:${x(r.give)}"></i><i class="hdot d1" style="left:${x(r.seek)}"></i></span>
+      </div>`; }).join("")}
+    <div class="viz-tip" hidden></div></div>`;
 }
 
 /** Ranked horizontal bars, one series. */
 function barsChart(items, unit) {
   if (!items.length) return `<p class="tiny">Not enough connections yet.</p>`;
   const max = Math.max(1, ...items.map((r) => r.v));
-  const W = 640, L = 230, R = 50, rowH = 28, H = items.length * rowH + 4;
-  const x = (v) => (v / max) * (W - L - R);
-  return `<div class="viz"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Ranked ${unit}">
-    ${items.map((r, i) => { const yy = i * rowH + 4;
-      return `<g class="row" data-tip="${svgEsc(r.k)}: ${fmt(r.v)} ${unit}">
-        <rect class="hit" x="0" y="${yy}" width="${W}" height="${rowH}" fill="transparent"/>
-        <text class="lab-l" x="${L - 12}" y="${yy + rowH / 2 + 4}" text-anchor="end">${svgEsc(r.k)}</text>
-        <rect class="b1" x="${L}" y="${yy + 6}" width="${Math.max(2, x(r.v))}" height="${rowH - 12}" rx="3"/>
-        <text class="val" x="${L + Math.max(2, x(r.v)) + 8}" y="${yy + rowH / 2 + 4}">${fmt(r.v)}</text>
-      </g>`; }).join("")}
-  </svg><div class="viz-tip" hidden></div></div>`;
+  return `<div class="viz hviz" role="table" aria-label="Ranked by ${unit}">
+    ${items.map((r) => `<div class="row hrow" role="row" data-tip="${esc(r.k)}: ${fmt(r.v)} ${unit}">
+        <span class="hlab" role="rowheader">${esc(r.k)}</span>
+        <span class="htrack" role="cell" style="--w:${(r.v / max) * 100}%"><i class="hfill" style="width:var(--w)"></i><b class="hval">${fmt(r.v)}</b></span>
+      </div>`).join("")}
+    <div class="viz-tip" hidden></div></div>`;
 }
 
 function wireTips(root, growth) {
   $$(".viz", root).forEach((viz) => {
-    const tip = $(".viz-tip", viz), svg = $("svg", viz);
+    const tip = $(".viz-tip", viz), svg = $("svg", viz) || viz;
     const place = (e, html) => { tip.innerHTML = html; tip.hidden = false; const r = viz.getBoundingClientRect(); tip.style.left = `${Math.min(r.width - 10, Math.max(10, e.clientX - r.left))}px`; tip.style.top = `${e.clientY - r.top}px`; };
     viz.addEventListener("pointerleave", () => { tip.hidden = true; const c = $(".cross", svg); if (c) c.setAttribute("hidden", ""); });
     if (viz.dataset.chart === "growth") {
@@ -1648,7 +1639,7 @@ function wireTips(root, growth) {
         place(e, `<b>${new Date(row.t).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</b><span><i class="k1"></i>${fmt(row.connections)} connections</span><span><i class="k2"></i>${fmt(row.members)} members</span>`);
       });
     } else {
-      svg.addEventListener("pointermove", (e) => { const g = e.target.closest(".row"); if (g) place(e, esc(g.dataset.tip)); else tip.hidden = true; });
+      viz.addEventListener("pointermove", (e) => { const g = e.target.closest(".row"); if (g) place(e, esc(g.dataset.tip)); else tip.hidden = true; });
     }
   });
 }
