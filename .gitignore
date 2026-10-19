@@ -2,3 +2,7 @@ node_modules/
 .wrangler/
 .dev.vars
 .DS_Store
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
