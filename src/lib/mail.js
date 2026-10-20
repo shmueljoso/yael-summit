@@ -1,12 +1,16 @@
 /**
- * Email through Resend (resend.com). Turned on by two settings in Cloudflare:
- *   RESEND_API_KEY  (secret)  the API key
- *   MAIL_FROM       (variable) a sender on a domain verified in Resend, e.g. "Yael Summit <summit@yaelfoundation.org>"
- * Without them nothing is sent and nothing breaks.
+ * Email through Resend (resend.com), sent from the Worker only: the API key never reaches the browser.
+ * Turned on by the RESEND_API_KEY secret in Cloudflare; without it nothing is sent and nothing breaks.
+ *
+ * Sender: Resend's shared test address, because no domain is verified in Resend yet. Resend only
+ * delivers mail from it to the email address of the Resend account owner.
+ * Once a domain is verified, change FROM to an address on it, e.g. "Yael Summit <summit@yaelfoundation.org>".
  */
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-export const mailOn = (env) => !!(env.RESEND_API_KEY && env.MAIL_FROM);
+const FROM = "onboarding@resend.dev";
+
+export const mailOn = (env) => !!env.RESEND_API_KEY;
 
 /** Sends one email. Returns true when Resend accepted it. Never throws. */
 export async function sendMail(env, { to, subject, heading, lines = [], quote = "", button, url }) {
@@ -27,7 +31,7 @@ export async function sendMail(env, { to, subject, heading, lines = [], quote = 
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
-      body: JSON.stringify({ from: env.MAIL_FROM, to: Array.isArray(to) ? to : [to], subject, html, text }),
+      body: JSON.stringify({ from: FROM, to: Array.isArray(to) ? to : [to], subject, html, text }),
     });
     if (!r.ok) console.log("mail failed", r.status, await r.text().catch(() => ""));
     return r.ok;
