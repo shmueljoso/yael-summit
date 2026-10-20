@@ -9,21 +9,25 @@ import { locate } from "../lib/places.js";
 import { UNJOINED_SCHOOLS } from "./profile.js";
 import { sendMail, siteUrl } from "../lib/mail.js";
 import { notify as phone } from "../lib/push.js";
+import { translate, stored, okLang, LANG_NAMES } from "../lib/translate.js";
+import { tr, listIn, topicsIn } from "../lib/i18n.js";
 
 const first = (name) => String(name || "").split(" ")[0];
 const schoolLine = (x) => [x.role_title, x.school, x.country].filter(Boolean).join(" · ");
 
-/** Emails a member about connection activity, if they haven't turned emails off. */
+/** Emails a member about connection activity, in their language, if they haven't turned emails off. */
 function notify(env, request, waitUntil, to, mail) {
   if (!to?.email || to.email_notify === 0) return;
-  waitUntil(sendMail(env, { to: to.email, url: siteUrl(request, mail.hash || "#/"), ...mail }));
+  waitUntil(sendMail(env, { to: to.email, url: siteUrl(request, mail.hash || "#/"), lang: okLang(to.lang), ...mail }));
 }
 
 const parse = (s) => { try { return JSON.parse(s); } catch { return []; } };
 const inter = (a, b) => a.filter((x) => b.includes(x));
-// Topic names mid-sentence: lower-case, except proper nouns ("Hebrew", "Jewish", "Israel").
-const label = (t) => { const s = TOPICS[t] || t; return /^(Hebrew|Jewish|Israel)/.test(s) ? s : s[0].toLowerCase() + s.slice(1); };
-const joinList = (l) => (l.length <= 1 ? l.join("") : `${l.slice(0, -1).join(", ")} and ${l[l.length - 1]}`);
+// Topic names mid-sentence: lower-case, except English proper nouns ("Hebrew", "Jewish", "Israel") and German nouns.
+const label = (t, lang = "en") => {
+  const s = topicsIn(lang, TOPICS)[t] || t;
+  return lang === "de" || (lang === "en" && /^(Hebrew|Jewish|Israel)/.test(s)) ? s : s[0].toLowerCase() + s.slice(1);
+};
 
 function score(me, x) {
   const [ms, mg, mt, xs, xg, xt] = [me.seeks, me.gives, me.topics, x.seeks, x.gives, x.topics].map(parse);
@@ -34,12 +38,13 @@ function score(me, x) {
   return { s, pct: Math.round(40 + 59 * Math.min(1, s / 11)), give, get, shared };
 }
 
-function reason(m, first) {
+function reason(m, first, lang) {
+  const list = (ts) => listIn(lang, ts.map((t) => label(t, lang)));
   const parts = [];
-  if (m.give.length) parts.push(`${first} is strong in ${joinList(m.give.map(label))}, which is what you want to learn.`);
-  if (m.get.length) parts.push(`${first} wants to learn about ${joinList(m.get.map(label))}, one of your strengths.`);
-  if (m.shared.length) parts.push(`You're both working on ${joinList(m.shared.map(label))}.`);
-  return parts.join(" ") || "A fresh perspective from another community.";
+  if (m.give.length) parts.push(tr(lang, "r_strong", { first, list: list(m.give) }));
+  if (m.get.length) parts.push(tr(lang, "r_wants", { first, list: list(m.get) }));
+  if (m.shared.length) parts.push(tr(lang, "r_both", { list: list(m.shared) }));
+  return parts.join(" ") || tr(lang, "r_fresh");
 }
 
 /** GET /api/suggestions — up to 6 principals worth meeting, not yet connected. */
@@ -56,7 +61,7 @@ export async function suggestions({ request, env }) {
     .map((x) => ({ x, m: score(u, x) }))
     .sort((a, b) => b.m.s - a.m.s || b.x.created_at - a.x.created_at)
     .slice(0, 6)
-    .map(({ x, m }) => ({ ...card(x), match: m.pct, reason: reason(m, x.full_name.split(" ")[0]), give: m.give, shared: m.shared }));
+    .map(({ x, m }) => ({ ...card(x), match: m.pct, reason: reason(m, x.full_name.split(" ")[0], okLang(u.lang)), give: m.give, shared: m.shared }));
   const complete = parse(u.topics).length + parse(u.gives).length + parse(u.seeks).length > 0;
   return json({ suggestions: list, profile_complete: complete });
 }
@@ -71,8 +76,10 @@ export async function list({ request, env }) {
      WHERE c.a = ?1 OR c.b = ?1 ORDER BY COALESCE(c.accepted_at, c.created_at) DESC`
   ).bind(u.id).all();
   const out = { connected: [], received: [], sent: [] };
+  const notes = await stored(d, results.filter((r) => r.note && r.requested_by !== u.id).map((r) => `n:${r.a}:${r.b}`), okLang(u.lang));
   for (const r of results) {
-    const item = { ...card(r), note: r.note, since: r.accepted_at || r.c_created };
+    const note = (r.requested_by !== u.id && notes.get(`n:${r.a}:${r.b}`)) || r.note;
+    const item = { ...card(r), note, since: r.accepted_at || r.c_created };
     if (r.status === "accepted") out.connected.push(item);
     else if (r.requested_by === u.id) out.sent.push(item);
     else out.received.push(item);
@@ -95,30 +102,36 @@ export async function request({ request, env, waitUntil }) {
   if (existing) {
     if (existing.status === "pending" && existing.requested_by !== u.id) {
       await d.prepare("UPDATE connections SET status = 'accepted', accepted_at = ? WHERE a = ? AND b = ?").bind(Date.now(), a, bb).run();
-      notify(env, request, waitUntil, other, accepted(u));
-      await phone(env, d, other.id, { kind: "accepted", title: `You're connected with ${u.full_name}`, body: "You can now message each other.", url: `#/messages/${u.id}` }, waitUntil);
+      const lang = okLang(other.lang);
+      notify(env, request, waitUntil, other, accepted(u, lang));
+      await phone(env, d, other.id, { kind: "accepted", title: tr(lang, "connected_title", { name: u.full_name }), body: tr(lang, "accepted_body"), url: `#/messages/${u.id}` }, waitUntil);
       return json({ connection: "connected" });
     }
     return json({ connection: existing.status === "accepted" ? "connected" : "sent" });
   }
+  const note = clip(b.note, 300);
   await d.prepare(
     "INSERT INTO connections (a, b, status, requested_by, note, created_at) VALUES (?, ?, 'pending', ?, ?, ?)"
-  ).bind(a, bb, u.id, clip(b.note, 300), Date.now()).run();
+  ).bind(a, bb, u.id, note, Date.now()).run();
+  // The note, in the recipient's language (kept as written if it already is, or if the AI is unavailable).
+  const lang = okLang(other.lang);
+  const r = note ? await translate(env, d, `n:${a}:${bb}`, note, [lang]) : null;
+  const said = r?.t?.[lang] || note;
   notify(env, request, waitUntil, other, {
-    subject: `${u.full_name} wants to connect`,
-    heading: `${u.full_name} wants to connect with you`,
-    lines: [schoolLine(u) || "A principal in the Yael Summit network.", "Once you accept, you can see each other's details and message directly."],
-    quote: clip(b.note, 300), button: "See the request", hash: "#/",
+    subject: tr(lang, "request_title", { name: u.full_name }),
+    heading: tr(lang, "request_heading", { name: u.full_name }),
+    lines: [schoolLine(u) || tr(lang, "principal"), tr(lang, "request_line")],
+    quote: said, button: tr(lang, "see_request"), hash: "#/",
   });
-  await phone(env, d, other.id, { kind: "request", title: `${u.full_name} wants to connect`, body: clip(b.note, 200) || schoolLine(u), url: "#/" }, waitUntil);
+  await phone(env, d, other.id, { kind: "request", title: tr(lang, "request_title", { name: u.full_name }), body: clip(said, 200) || schoolLine(u), url: "#/" }, waitUntil);
   return json({ connection: "sent" }, 201);
 }
 
-const accepted = (u) => ({
-  subject: `${u.full_name} accepted your request`,
-  heading: `You're connected with ${u.full_name}`,
-  lines: [schoolLine(u) || "A principal in the Yael Summit network.", `You can now see ${first(u.full_name)}'s contact details and send a message.`],
-  button: `Message ${first(u.full_name)}`, hash: `#/messages/${u.id}`,
+const accepted = (u, lang) => ({
+  subject: tr(lang, "accepted_title", { name: u.full_name }),
+  heading: tr(lang, "connected_title", { name: u.full_name }),
+  lines: [schoolLine(u) || tr(lang, "principal"), tr(lang, "accepted_line", { first: first(u.full_name) })],
+  button: tr(lang, "message_first", { first: first(u.full_name) }), hash: `#/messages/${u.id}`,
 });
 
 /** POST /api/connections/:id/accept */
@@ -128,8 +141,10 @@ export async function accept({ request, env, params, waitUntil }) {
   const c = await connectionBetween(d, u.id, params.id);
   if (!c || c.status !== "pending" || c.requested_by === u.id) return error(404, "not_found", "There's no request to accept.");
   await d.prepare("UPDATE connections SET status = 'accepted', accepted_at = ? WHERE a = ? AND b = ?").bind(Date.now(), c.a, c.b).run();
-  notify(env, request, waitUntil, await d.prepare("SELECT * FROM users WHERE id = ?").bind(params.id).first(), accepted(u));
-  await phone(env, d, params.id, { kind: "accepted", title: `${u.full_name} accepted your request`, body: "You can now message each other.", url: `#/messages/${u.id}` }, waitUntil);
+  const other = await d.prepare("SELECT * FROM users WHERE id = ?").bind(params.id).first();
+  const lang = okLang(other?.lang);
+  notify(env, request, waitUntil, other, accepted(u, lang));
+  await phone(env, d, params.id, { kind: "accepted", title: tr(lang, "accepted_title", { name: u.full_name }), body: tr(lang, "accepted_body"), url: `#/messages/${u.id}` }, waitUntil);
   return json({ connection: "connected" });
 }
 
@@ -138,7 +153,10 @@ export async function remove({ request, env, params }) {
   const u = await requireUser(env, request);
   const d = await db(env);
   const [a, b] = pairOf(u.id, params.id);
-  await d.prepare("DELETE FROM connections WHERE a = ? AND b = ?").bind(a, b).run();
+  await d.batch([
+    d.prepare("DELETE FROM connections WHERE a = ? AND b = ?").bind(a, b),
+    d.prepare("DELETE FROM translations WHERE item = ?").bind(`n:${a}:${b}`),
+  ]);
   return json({ connection: null });
 }
 
@@ -163,13 +181,13 @@ export async function map({ request, env }) {
 
 const SYSTEM = [
   "You introduce principals of Jewish schools around the world to each other before the Yael Foundation summit.",
-  "Write in English. why: one warm, specific sentence (max 30 words) on why these two should talk.",
+  "Write in the language the request names. why: one warm, specific sentence (max 30 words) on why these two should talk.",
   "opener: one concrete first question the reader could ask (max 18 words). No superlatives, no emoji.",
   'Return JSON only: {"why":string,"opener":string}',
 ].join(" ");
 
 function brief(x) {
-  const t = (k) => parse(x[k]).map(label).join(", ") || "-";
+  const t = (k) => parse(x[k]).map((t) => label(t)).join(", ") || "-";
   return `${x.role_title || "Principal"}, ${x.school || "a Jewish school"} (${[x.city, x.country].filter(Boolean).join(", ") || "-"}). Working on: ${t("topics")}. Strong in: ${t("gives")}. Wants to learn: ${t("seeks")}.${x.bio ? ` About: ${clip(x.bio, 240)}` : ""}`;
 }
 
@@ -179,7 +197,8 @@ export async function intro({ request, env, params }) {
   const d = await db(env);
   const x = await d.prepare("SELECT * FROM users WHERE id = ?").bind(params.id).first();
   if (!x) return error(404, "not_found", "This principal wasn't found.");
-  const text = `Reader — ${brief(u)}\nOther (${x.full_name.split(" ")[0]}) — ${brief(x)}`;
+  const lang = okLang(u.lang);
+  const text = `Language: ${LANG_NAMES[lang]}\nReader — ${brief(u)}\nOther (${x.full_name.split(" ")[0]}) — ${brief(x)}`;
   const key = `ai:${await sha256(modelOf(env) + text)}`;
   const hit = await env.BOARD?.get(key, "json");
   if (hit) return json(hit, 200, { "x-cache": "HIT" });

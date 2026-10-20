@@ -3,6 +3,8 @@ import { json, error, clip, readJson, randomId, limited } from "../lib/http.js";
 import { db, full, hashPassword, startSession, endSessionCookie } from "../lib/db.js";
 import { sha256 } from "../lib/http.js";
 import { sendMail, mailOn, siteUrl } from "../lib/mail.js";
+import { okLang, LANGS } from "../lib/translate.js";
+import { tr } from "../lib/i18n.js";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -31,8 +33,8 @@ export async function signup({ request, env }) {
   const salt = randomId(16);
   const pass_hash = await hashPassword(password, salt);
   await d.prepare(
-    "INSERT INTO users (id, email, pass_hash, salt, full_name, created_at, consented_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  ).bind(id, email, pass_hash, salt, full_name, Date.now(), Date.now()).run();
+    "INSERT INTO users (id, email, pass_hash, salt, full_name, created_at, consented_at, lang) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(id, email, pass_hash, salt, full_name, Date.now(), Date.now(), LANGS.includes(b.lang) ? b.lang : "").run();
 
   const cookie = await startSession(env, id, request);
   const u = await d.prepare("SELECT * FROM users WHERE id = ?").bind(id).first();
@@ -71,19 +73,18 @@ export async function forgot({ request, env, waitUntil }) {
   const email = clip(b.email, 120).toLowerCase();
   if (!EMAIL.test(email)) return error(400, "email", "Please enter a valid email address.");
   const d = await db(env);
-  const u = await d.prepare("SELECT id, full_name, email FROM users WHERE email = ?").bind(email).first();
+  const u = await d.prepare("SELECT id, full_name, email, lang FROM users WHERE email = ?").bind(email).first();
   if (u && !(await limited(env, `forgot:${email}`, 3))) {
     const token = randomId(32);
     await d.batch([
       d.prepare("DELETE FROM password_resets WHERE user_id = ? OR expires < ?").bind(u.id, Date.now()),
       d.prepare("INSERT INTO password_resets (token_hash, user_id, expires) VALUES (?, ?, ?)").bind(await sha256(token), u.id, Date.now() + RESET_TTL),
     ]);
+    const lang = okLang(u.lang);
     waitUntil(sendMail(env, {
-      to: u.email, subject: "Choose a new password",
-      heading: "Choose a new password",
-      lines: [`Hi ${u.full_name.split(" ")[0]}, someone (hopefully you) asked to reset the password for your Yael Summit account.`,
-        "The link works for one hour. If you didn't ask for this, you can ignore this email: your password stays the same."],
-      button: "Choose a new password", url: siteUrl(request, `#/reset/${token}`),
+      to: u.email, subject: tr(lang, "reset_subject"), heading: tr(lang, "reset_subject"), lang,
+      lines: [tr(lang, "reset_l1", { first: u.full_name.split(" ")[0] }), tr(lang, "reset_l2")],
+      button: tr(lang, "reset_subject"), url: siteUrl(request, `#/reset/${token}`),
     }));
   }
   return json({ ok: true });

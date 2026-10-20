@@ -2,6 +2,8 @@
 import { json, error, clip, clipText, readJson } from "../lib/http.js";
 import { db, card, full, currentUser, requireUser, connectionBetween, isAdmin, deleteUserData, hashPassword, endSessionCookie, TOPICS, LEVELS, LINK_KINDS } from "../lib/db.js";
 import { locate } from "../lib/places.js";
+import { okLang, LANGS, stored, view } from "../lib/translate.js";
+import { topicsIn, levelsIn } from "../lib/i18n.js";
 
 const topicList = (arr) => (Array.isArray(arr) ? [...new Set(arr.filter((t) => t in TOPICS))].slice(0, 5) : []);
 
@@ -21,11 +23,24 @@ export async function me({ request, env }) {
     d.prepare("SELECT COUNT(*) n FROM connections WHERE status = 'pending' AND requested_by != ? AND (a = ? OR b = ?)").bind(u.id, u.id, u.id).first(),
     d.prepare("SELECT COUNT(*) n FROM messages WHERE to_id = ? AND read_at IS NULL").bind(u.id).first(),
   ]);
-  return json({ me: mine(u), admin: isAdmin(env, u), counts: { requests: req?.n || 0, unread: unread?.n || 0 }, taxonomy: { topics: TOPICS, levels: LEVELS } });
+  return json({ me: mine(u), admin: isAdmin(env, u), counts: { requests: req?.n || 0, unread: unread?.n || 0 }, taxonomy: { topics: topicsIn(u.lang, TOPICS), levels: levelsIn(u.lang, LEVELS) } });
 }
 
 /** Your own profile: everything, plus your settings. */
-const mine = (u) => ({ ...full(u), email_notify: u.email_notify !== 0 });
+const mine = (u) => ({ ...full(u), email_notify: u.email_notify !== 0, lang: LANGS.includes(u.lang) ? u.lang : "" });
+
+/** PUT /api/me/lang { lang } — the language you read the network in (posts, messages, emails, notifications). */
+export async function setLang({ request, env }) {
+  const u = await requireUser(env, request);
+  const b = await readJson(request);
+  if (!LANGS.includes(b.lang)) return error(400, "lang", "Choose one of the site's languages.");
+  const d = await db(env);
+  await d.prepare("UPDATE users SET lang = ? WHERE id = ?").bind(b.lang, u.id).run();
+  return json({ lang: b.lang, taxonomy: { topics: topicsIn(b.lang, TOPICS), levels: levelsIn(b.lang, LEVELS) } });
+}
+
+/** GET /api/geo — the visitor's country (from Cloudflare), to guess a language when the phone's isn't one of ours. */
+export const geo = ({ request }) => json({ country: request.cf?.country || "" }, 200, { "cache-control": "private, max-age=3600" });
 
 /** DELETE /api/me { password } — delete your account and everything you created. */
 export async function deleteMe({ request, env }) {
@@ -165,8 +180,11 @@ export async function person({ request, env, params }) {
     d.prepare("SELECT id, kind, text, original, lang, created_at FROM posts WHERE user_id = ? ORDER BY created_at DESC LIMIT 10").bind(x.id).all(),
     d.prepare("SELECT COUNT(*) n FROM connections WHERE status = 'accepted' AND (a = ? OR b = ?)").bind(x.id, x.id).first(),
   ]);
+  // Their posts, and the note on their request, in the reader's language.
+  const reader = okLang(u.lang);
+  const trs = await stored(d, [...posts.map((p) => `p:${p.id}`), ...(connection === "received" ? [`n:${c.a}:${c.b}`] : [])], reader);
   return json({
-    profile: { ...(self || connected ? full(x) : card(x)), connection, connections: counts?.n || 0, note: connection === "received" ? c.note : undefined },
-    posts,
+    profile: { ...(self || connected ? full(x) : card(x)), connection, connections: counts?.n || 0, note: connection === "received" ? trs.get(`n:${c.a}:${c.b}`) || c.note : undefined },
+    posts: posts.map((p) => { const v = view(p, trs.get(`p:${p.id}`), reader); return { id: p.id, kind: p.kind, text: v.text, original: v.original, lang: v.lang, created_at: p.created_at }; }),
   });
 }
