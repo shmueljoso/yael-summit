@@ -20,6 +20,8 @@ const ROUTES = [
   ["GET", "/api/me", profile.me],
   ["PUT", "/api/me", profile.updateMe],
   ["DELETE", "/api/me", profile.deleteMe],
+  ["PUT", "/api/me/lang", profile.setLang],
+  ["GET", "/api/geo", profile.geo],
   ["PUT", "/api/me/avatar", profile.putAvatar],
   ["DELETE", "/api/me/avatar", profile.deleteAvatar],
   ["GET", "/api/avatar/:id", profile.avatar],

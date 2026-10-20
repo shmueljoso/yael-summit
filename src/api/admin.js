@@ -60,6 +60,7 @@ export async function removePost({ request, env, params }) {
   const d = await db(env);
   await d.batch([
     d.prepare("DELETE FROM reports WHERE post_id = ?").bind(params.id),
+    d.prepare("DELETE FROM translations WHERE item = ? OR item IN (SELECT 'c:' || id FROM comments WHERE post_id = ?)").bind(`p:${params.id}`, params.id),
     d.prepare("DELETE FROM comments WHERE post_id = ?").bind(params.id),
     d.prepare("DELETE FROM posts WHERE id = ?").bind(params.id),
   ]);

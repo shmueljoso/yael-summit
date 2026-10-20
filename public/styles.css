@@ -67,8 +67,8 @@
 }
 
 :root {
-  --f-display: "Fraunces", "Times New Roman", serif;
-  --f-ui: "DM Sans", "Segoe UI", Arial, sans-serif;
+  --f-display: "Fraunces", "Frank Ruhl Libre", "Playfair Display", "Times New Roman", serif;
+  --f-ui: "DM Sans", "Heebo", "Inter", "Segoe UI", Arial, sans-serif;
   --f-mono: "DM Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   --r-sm: 10px; --r: 16px; --r-lg: 24px;
   --gutter: max(16px, 4vw);
@@ -701,3 +701,38 @@ details.tiny .viz-table { margin-top: 8px; }
   .hrow { grid-template-columns: minmax(90px, 42%) minmax(0, 1fr); gap: 8px; }
 }
 @media (max-width: 640px) { .impact-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } .impact-tile { padding: 16px; } .impact-tile .bento-num { font-size: 1.9rem; } }
+
+/* ---------- languages ---------- */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.lang-pick { position: relative; display: inline-flex; }
+.lang-pick select {
+  appearance: none; -webkit-appearance: none; height: 40px; padding: 0 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: transparent; color: var(--text); font: 500 .74rem/1 var(--f-mono); letter-spacing: .1em;
+}
+.lang-pick select:hover { border-color: var(--line-strong); }
+.lang-pick select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lang-pick option { background: var(--surface-solid); color: var(--text); }
+.lang-pick-wide select { height: 44px; padding: 0 40px 0 16px; padding-inline: 16px 40px; font: 500 .95rem/1 var(--f-ui); letter-spacing: 0; }
+.lang-pick-wide::after { content: ""; position: absolute; inset-inline-end: 16px; top: 50%; width: 7px; height: 7px; margin-top: -5px; border: solid var(--text-2); border-width: 0 1.6px 1.6px 0; transform: rotate(45deg); pointer-events: none; }
+.land-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.land-top .lang-pick-wide select { height: 38px; font-size: .88rem; background: var(--surface); }
+@media (max-width: 720px) { .nav-end .lang-pick select { height: 36px; padding: 0 9px; } }
+.bubble .orig { display: block; }
+.bubble .orig-btn { display: block; margin-top: 4px; font-size: .74rem; opacity: .8; }
+
+/* Hebrew and Cyrillic: the site's fonts don't have these letters, so the browser takes them from these
+   (loaded only for those languages). Hebrew reads right to left; the layout uses logical properties. */
+:lang(he) .label, :lang(he) .brand-text small { letter-spacing: .04em; }
+:lang(he) .display, :lang(he) .section-head h2 { letter-spacing: 0; line-height: 1.1; }
+:lang(ru) .display, :lang(uk) .display { letter-spacing: -.01em; line-height: 1.05; }
+/* Long words (Russian, Ukrainian, German) must never push the page sideways on a phone. */
+.display, h1, h2, h3 { overflow-wrap: anywhere; hyphens: auto; }
+.legal > * { min-width: 0; }
+@media (max-width: 520px) { .savebar .btn { padding-inline: 14px; } .savebar { justify-content: space-between; } }
+/* Signed out on a phone the top bar holds the language, theme, Sign in and Join: the wordmark steps aside. */
+@media (max-width: 520px) {
+  body:not(.signed-in) .brand-text { display: none; }
+  body:not(.signed-in) .nav-end { gap: 6px; }
+  body:not(.signed-in) .nav-end .btn-sm { padding-inline: 12px; }
+}
+.sugg .chip, .prof-body .chip { white-space: normal; max-width: 100%; }

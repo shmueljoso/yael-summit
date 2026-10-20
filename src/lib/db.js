@@ -64,6 +64,8 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS notifications_user ON notifications (user_id, id)`,
   // Browsers / home-screen apps that asked for push notifications.
   `CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at INTEGER NOT NULL)`,
+  // Posts, replies, messages and request notes in every reader's language (item = "p:<id>", "c:<id>", "m:<id>", "n:<a>:<b>").
+  `CREATE TABLE IF NOT EXISTS translations (item TEXT NOT NULL, lang TEXT NOT NULL, text TEXT NOT NULL, PRIMARY KEY (item, lang))`,
 ];
 
 // Columns added after launch. ALTER fails harmlessly when the column already exists.
@@ -74,6 +76,8 @@ const MIGRATIONS = [
   "ALTER TABLE users ADD COLUMN school_id TEXT",
   "ALTER TABLE users ADD COLUMN consented_at INTEGER",
   "ALTER TABLE users ADD COLUMN email_notify INTEGER DEFAULT 1",
+  "ALTER TABLE users ADD COLUMN lang TEXT DEFAULT ''",
+  "ALTER TABLE messages ADD COLUMN lang TEXT DEFAULT ''",
 ];
 
 async function prepare(env) {
@@ -96,6 +100,10 @@ async function removeSampleContent(d) {
  */
 export async function deleteUserData(d, id) {
   await d.batch([
+    d.prepare(`DELETE FROM translations WHERE item IN (SELECT 'p:' || id FROM posts WHERE user_id = ?1)
+      OR item IN (SELECT 'c:' || id FROM comments WHERE user_id = ?1 OR post_id IN (SELECT id FROM posts WHERE user_id = ?1))
+      OR item IN (SELECT 'm:' || id FROM messages WHERE from_id = ?1 OR to_id = ?1)
+      OR item LIKE 'n:' || ?1 || ':%' OR item LIKE 'n:%:' || ?1`).bind(id),
     d.prepare("DELETE FROM messages WHERE from_id = ?1 OR to_id = ?1").bind(id),
     d.prepare("DELETE FROM connections WHERE a = ?1 OR b = ?1").bind(id),
     d.prepare("DELETE FROM reports WHERE reporter_id = ?1 OR post_id IN (SELECT id FROM posts WHERE user_id = ?1)").bind(id),

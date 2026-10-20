@@ -2,8 +2,8 @@
    Network first for the site's own files, so every visit gets the latest version;
    the last copy is kept only to open the app when there's no connection.
    API calls (/api/*) are never cached or touched. */
-const CACHE = "yael-shell-v2";
-const SHELL = ["/", "/app.js", "/styles.css", "/assets/summit-mark.jpg"];
+const CACHE = "yael-shell-v3";
+const SHELL = ["/", "/app.js", "/i18n.js", "/styles.css", "/assets/summit-mark.jpg"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}));

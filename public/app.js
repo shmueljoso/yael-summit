@@ -1,4 +1,6 @@
 /* Yael Summit · Constellation — single-page app. No framework, no build step. */
+import { t, LANG, LANGS, langName, locale, setLang, adopt, chosenHere, ready as i18nReady } from "./i18n.js";
+const tr = t; // for code where `t` names something else
 
 // =============================================================
 // helpers
@@ -48,14 +50,14 @@ const where = (p) => [p.school, place(p)].filter(Boolean).join(" · ");
 
 function ago(ts) {
   const m = Math.round((Date.now() - ts) / 60000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m} min ago`;
+  if (m < 1) return t("just now");
+  if (m < 60) return t("{n} min ago", { n: m });
   const h = Math.round(m / 60);
-  if (h < 24) return `${h}h ago`;
+  if (h < 24) return t("{n}h ago", { n: h });
   const d = Math.round(h / 24);
-  return d < 7 ? `${d}d ago` : new Date(ts).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  return d < 7 ? t("{n}d ago", { n: d }) : new Date(ts).toLocaleDateString(locale(), { day: "numeric", month: "short" });
 }
-const clock = (ts) => new Date(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+const clock = (ts) => new Date(ts).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
 
 let toastTimer;
 function toast(msg) {
@@ -88,6 +90,14 @@ function setTheme(day) {
   $('meta[name="theme-color"]').content = day ? "#F5F3EE" : "#060D26";
   try { localStorage.setItem("theme", day ? "day" : "night"); } catch { /* storage unavailable */ }
   renderChrome();
+}
+/** The language switch: a compact select in the top bar. */
+const langPicker = (id = "langPick", cls = "lang-pick") =>
+  `<label class="${cls}" title="Language"><span class="sr-only">Language</span><select id="${id}" aria-label="Language">${Object.entries(LANGS).map(([k, v]) => `<option value="${k}" ${k === LANG ? "selected" : ""} translate="no">${cls === "lang-pick" ? k.toUpperCase() : v}</option>`).join("")}</select></label>`;
+async function chooseLang(l) {
+  if (l === LANG) return;
+  if (state.me) await api("PUT", "/api/me/lang", { lang: l }).catch(() => {});
+  setLang(l);
 }
 const themeButton = () => `<button class="btn btn-quiet theme-btn" id="themeBtn" type="button" aria-label="${isDay() ? "Switch to night mode" : "Switch to day mode"}" title="${isDay() ? "Night mode" : "Day mode"}">${icon(isDay() ? "moon" : "sun")}</button>`;
 
@@ -190,22 +200,23 @@ function renderChrome() {
   $("#nav").innerHTML = signed
     ? NAV.map(([href, label, ic]) => `<a href="${href}" ${current(href) ? 'aria-current="page"' : ""}>${label}${badge(ic)}</a>`).join("")
     : `<a href="#/summit" ${current("#/summit") ? 'aria-current="page"' : ""}>The Summit</a>`;
-  $("#navEnd").innerHTML = (signed ? `<a class="btn btn-quiet theme-btn" href="#/meet" aria-label="Meet in person: my code" title="Meet in person">${icon("qr")}</a>` : "") + themeButton() + (signed
-    ? `<button class="me-btn" id="meBtn" aria-haspopup="true" aria-expanded="false">${avatar(state.me, "xs")}<span class="me-name">${esc(first(state.me.full_name))}</span></button>
+  $("#navEnd").innerHTML = langPicker() + (signed ? `<a class="btn btn-quiet theme-btn" href="#/meet" aria-label="Meet in person: my code" title="Meet in person">${icon("qr")}</a>` : "") + themeButton() + (signed
+    ? `<button class="me-btn" id="meBtn" aria-haspopup="true" aria-expanded="false">${avatar(state.me, "xs")}<span class="me-name" translate="no">${esc(first(state.me.full_name))}</span></button>
        <div class="menu" id="meMenu" hidden>
          <a href="#/u/${state.me.id}">My profile</a><a href="#/meet">Meet in person</a><a href="#/me/edit">Edit profile</a><a href="#/summit">The Summit</a>${state.admin ? `<a href="#/admin">Admin</a>` : ""}<a href="#/privacy">Privacy & terms</a><button id="signOut">Sign out</button>
        </div>`
     : `<a class="btn btn-quiet btn-sm" href="#/signin">Sign in</a><a class="btn btn-gold btn-sm" href="#/join">Join</a>`);
   $("#themeBtn").onclick = () => setTheme(!isDay());
+  $("#langPick").onchange = (e) => chooseLang(e.target.value);
   const tab = $("#tabbar");
   tab.hidden = !signed;
   if (signed) {
     tab.innerHTML = NAV.slice(0, 4).map(([href, label, ic]) => `<a href="${href}" ${current(href) ? 'aria-current="page"' : ""}>${icon(ic)}${label}${badge(ic)}</a>`).join("") +
-      `<a href="#/u/${state.me.id}" ${location.hash === `#/u/${state.me.id}` ? 'aria-current="page"' : ""}>${avatar(state.me, "xs")}Me</a>`;
+      `<a href="#/u/${state.me.id}" ${location.hash === `#/u/${state.me.id}` ? 'aria-current="page"' : ""}>${avatar(state.me, "xs")}${t("Me")}</a>`;
     const btn = $("#meBtn"), menu = $("#meMenu");
     btn.onclick = (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; btn.setAttribute("aria-expanded", String(!menu.hidden)); };
     menu.onclick = () => (menu.hidden = true);
-    $("#signOut").onclick = async () => { await pushOff().catch(() => {}); await api("POST", "/api/auth/logout").catch(() => {}); state.me = null; renderChrome(); go("#/signin"); toast("Signed out."); };
+    $("#signOut").onclick = async () => { await pushOff().catch(() => {}); await api("POST", "/api/auth/logout").catch(() => {}); state.me = null; langSynced = false; renderChrome(); go("#/signin"); toast("Signed out."); };
   }
 }
 document.addEventListener("click", () => { const m = $("#meMenu"); if (m) m.hidden = true; });
@@ -215,7 +226,20 @@ async function refreshMe() {
   state.me = data.me; state.admin = !!data.admin;
   if (data.counts) state.counts = data.counts;
   if (data.taxonomy) { state.topics = data.taxonomy.topics; state.levels = data.taxonomy.levels; }
+  await syncLang();
   renderChrome();
+}
+/** The account remembers its language: a new device takes it on, and a choice made here is saved to it. */
+let langSynced = false;
+async function syncLang() {
+  if (!state.me || langSynced) return;
+  langSynced = true;
+  if (state.me.lang && state.me.lang !== LANG && !chosenHere() && adopt(state.me.lang)) return;
+  if (state.me.lang === LANG) return;
+  try {
+    const r = await api("PUT", "/api/me/lang", { lang: LANG });
+    state.me.lang = LANG; state.topics = r.taxonomy.topics; state.levels = r.taxonomy.levels;
+  } catch { /* try again next time */ }
 }
 setInterval(() => { if (state.me && !document.hidden) refreshMe().catch(() => {}); }, 45000);
 
@@ -304,9 +328,9 @@ function askNote(name, preset = "") {
     const d = document.createElement("dialog");
     d.className = "panel-lg note-dialog";
     d.innerHTML = `<form method="dialog" class="stack">
-      <h2 class="display" style="font-size:1.8rem">Connect with ${esc(first(name))}</h2>
+      <h2 class="display" style="font-size:1.8rem">${esc(t("Connect with {name}", { name: first(name) }))}</h2>
       <label class="field"><span>Add a note <span class="tiny">(optional)</span></span>
-        <textarea class="textarea" id="connNote" maxlength="300" placeholder="Hi ${esc(first(name))}, I'd love to hear how you…">${esc(preset)}</textarea></label>
+        <textarea class="textarea" id="connNote" maxlength="300" placeholder="${esc(t("Hi {name}, I'd love to hear how you…", { name: first(name) }))}">${esc(preset)}</textarea></label>
       <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn btn-quiet" value="cancel">Cancel</button><button class="btn btn-primary" value="send">Send request</button></div>
     </form>`;
     d.addEventListener("close", () => { resolve(d.returnValue === "send" ? $("#connNote", d).value : null); d.remove(); });
@@ -349,13 +373,13 @@ function landing(mode) {
     <canvas class="land-sky" id="sky" aria-hidden="true"></canvas>
     <div class="wrap land-hero">
       <div class="land-copy fade-in">
-        <p class="label">Yael Summit · Constellation</p>
+        <div class="land-top"><p class="label">Yael Summit · Constellation</p>${langPicker("landLang", "lang-pick lang-pick-wide")}</div>
         <h1 class="display">Every leader is a star. <em>Together, a constellation.</em></h1>
         <p class="lede">Jewish school leaders from around the world, connected before the summit even begins. Find the principals facing what you face, and start the conversation.</p>
         <ul class="land-points">
           <li>Get matched with leaders who have solved what you're working on.</li>
           <li>Connect, see each other's details and talk directly.</li>
-          <li>Ask the whole network, in any language.</li>
+          <li>Write in your language. Everyone reads you in theirs.</li>
         </ul>
         <div class="land-stats" id="landStats" hidden></div>
         <div class="land-foot"><button type="button" class="btn btn-gold only-phone" id="toForm">${join ? "Create your profile" : "Sign in"}</button><a href="#/summit" class="btn btn-quiet">About the summit →</a><a href="#/privacy" class="btn btn-quiet btn-sm">Privacy & terms</a></div>
@@ -384,6 +408,7 @@ function landing(mode) {
     box.hidden = false;
   }).catch(() => {});
   $$("[data-to]").forEach((b) => (b.onclick = () => go(`#/${b.dataset.to}`)));
+  $("#landLang").onchange = (e) => chooseLang(e.target.value);
   $("#toForm").onclick = () => { $("#authCard").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }); setTimeout(() => $("#authForm input")?.focus({ preventScroll: true }), reduceMotion ? 0 : 450); };
   $("#authForm").onsubmit = async (e) => {
     e.preventDefault();
@@ -391,7 +416,7 @@ function landing(mode) {
     const btn = e.target.querySelector("[type=submit]"), err = $("#authErr");
     btn.disabled = true; err.textContent = "";
     try {
-      await api("POST", join ? "/api/auth/signup" : "/api/auth/login", f);
+      await api("POST", join ? "/api/auth/signup" : "/api/auth/login", { ...f, lang: LANG });
       await refreshMe();
       const after = takeAfter();
       go(after || (join ? "#/me/edit" : "#/"));
@@ -412,7 +437,7 @@ async function home() {
     <div class="wrap">
       <div class="home-head fade-in">
         ${avatar(me, "lg")}
-        <div class="grow"><p class="label">Your constellation</p><h1 class="display">Shalom, ${esc(first(me.full_name))}</h1></div>
+        <div class="grow"><p class="label">Your constellation</p><h1 class="display">${esc(t("Shalom, {name}", { name: first(me.full_name) }))}</h1></div>
         <div class="stat-row">
           <div class="stat"><b>${cons.connected.length}</b><span>connections</span></div>
           <div class="stat"><b>${reqs.length}</b><span>requests</span></div>
@@ -425,7 +450,7 @@ async function home() {
       ${!sug.profile_complete ? `<div class="nudge fade-in"><span><b>Complete your profile</b> so we can suggest the right principals: what you're working on, where you're strong, what you want to learn.</span><a class="btn btn-gold btn-sm" href="#/me/edit">Complete profile</a></div>` : ""}
 
       ${reqs.length ? `<section class="section"><div class="section-head"><h2>Requests</h2></div><div class="stack" id="reqs">
-        ${reqs.map((p) => `<div class="req">${avatar(p, "sm")}<div class="who"><a href="#/u/${esc(p.id)}">${esc(p.full_name)}</a><span class="tiny">${esc(where(p))}</span>${p.note ? `<span class="note">“${esc(p.note)}”</span>` : ""}</div><div class="acts">${connectButtons({ ...p, connection: "received" }, { sm: true })}</div></div>`).join("")}
+        ${reqs.map((p) => `<div class="req">${avatar(p, "sm")}<div class="who"><a href="#/u/${esc(p.id)}">${esc(p.full_name)}</a><span class="tiny">${esc(where(p))}</span>${p.note ? `<span class="note" translate="no" dir="auto">“${esc(p.note)}”</span>` : ""}</div><div class="acts">${connectButtons({ ...p, connection: "received" }, { sm: true })}</div></div>`).join("")}
       </div></section>` : ""}
 
       <section class="section">
@@ -435,7 +460,7 @@ async function home() {
       </section>
 
       <section class="section">
-        <div class="section-head"><h2>Your connections</h2>${cons.sent.length ? `<span class="tiny">${cons.sent.length} request${cons.sent.length > 1 ? "s" : ""} waiting for an answer</span>` : ""}</div>
+        <div class="section-head"><h2>Your connections</h2>${cons.sent.length ? `<span class="tiny">${t(cons.sent.length > 1 ? "{n} requests waiting for an answer" : "1 request waiting for an answer", { n: cons.sent.length })}</span>` : ""}</div>
         ${cons.connected.length ? `<div class="people-row">${cons.connected.map((p) => `<a class="mini" href="#/u/${esc(p.id)}">${avatar(p, "lg")}<span>${esc(p.full_name)}</span><small>${esc(p.country || p.school || "")}</small></a>`).join("")}</div>`
           : `<div class="empty"><span>No connections yet. Start with one of the principals above.</span></div>`}
       </section>
@@ -453,19 +478,19 @@ async function home() {
       const r = await api("POST", `/api/intro/${b.dataset.id}`);
       const card = b.closest(".sugg");
       const why = $(".why", card); why.textContent = r.why; why.classList.add("ai");
-      const op = $(".opener", card); op.textContent = `Ask: “${r.opener}”`; op.hidden = false;
+      const op = $(".opener", card); op.textContent = t("Ask: “{q}”", { q: r.opener }); op.hidden = false;
       b.remove();
-    } catch (err) { toast(err.message); b.disabled = false; b.innerHTML = `${icon("spark", true)}Why meet?`; }
+    } catch (err) { toast(err.message); b.disabled = false; b.innerHTML = `${icon("spark", true)}${t("Why meet?")}`; }
   });
 }
 
 function suggCard(p) {
   return `<article class="sugg">
     <div class="top">${avatar(p, "lg")}<div class="who"><a href="#/u/${esc(p.id)}">${esc(p.full_name)}</a><span class="where">${esc(where(p) || "Principal")}</span></div>
-      <div class="ring" style="--p:${p.match}" title="${p.match}% match"><span>${p.match}%</span></div></div>
+      <div class="ring" style="--p:${p.match}" title="${esc(t("{n}% match", { n: p.match }))}"><span>${p.match}%</span></div></div>
     <p class="why">${esc(p.reason)}</p>
     <p class="opener" hidden></p>
-    ${p.give.length || p.shared.length ? `<div class="chips">${p.give.map((t) => `<span class="chip gold">Can help: ${esc(topicLabel(t))}</span>`).join("")}${p.shared.map((t) => `<span class="chip plain">${esc(topicLabel(t))}</span>`).join("")}</div>` : ""}
+    ${p.give.length || p.shared.length ? `<div class="chips">${p.give.map((x) => `<span class="chip gold">${esc(t("Can help: {topic}", { topic: topicLabel(x) }))}</span>`).join("")}${p.shared.map((t) => `<span class="chip plain">${esc(topicLabel(t))}</span>`).join("")}</div>` : ""}
     <div class="acts">${connectButtons({ ...p, connection: null }, { sm: true })}<button class="btn btn-soft btn-sm" data-act="why" data-id="${esc(p.id)}">${icon("spark", true)}Why meet?</button></div>
   </article>`;
 }
@@ -509,14 +534,14 @@ function people(mode) {
     try {
       const { people, schools } = await api("GET", `/api/people?${new URLSearchParams({ q, topic })}`);
       if (token !== routeToken) return;
-      const waiting = schools.length ? `<div class="section-head" style="margin-top:28px"><h2 style="font-size:1.5rem">Schools not on the network yet</h2><span class="tiny">${schools.length} school${schools.length === 1 ? "" : "s"} · their principals haven't joined yet</span></div>
+      const waiting = schools.length ? `<div class="section-head" style="margin-top:28px"><h2 style="font-size:1.5rem">Schools not on the network yet</h2><span class="tiny">${t(schools.length === 1 ? "1 school · its principal hasn't joined yet" : "{n} schools · their principals haven't joined yet", { n: schools.length })}</span></div>
         <div class="cards">${schools.map((x) => `<div class="person waiting">${avatar({ id: x.id, full_name: x.name }, "lg")}<span class="who"><b>${esc(x.name)}</b><span>${esc(state.levels[x.level] || "")}</span><span>${esc(place(x))}</span></span></div>`).join("")}</div>` : "";
       body.innerHTML = (people.length
         ? `<div class="cards">${people.map((p) => `<a class="person" href="#/u/${esc(p.id)}">${avatar(p, "lg")}<span class="who"><b>${esc(p.full_name)}</b><span>${esc(p.role_title || "Principal")}</span><span>${esc(where(p))}</span></span>${p.connection ? `<span class="state ${p.connection}">${{ connected: "Connected", sent: "Requested", received: "Wants to connect" }[p.connection]}</span>` : ""}</a>`).join("")}</div>`
         : `<div class="empty"><span>${q || topic ? "No principals match that yet." : "No other principals have joined yet."}</span></div>`) + waiting;
     } catch (e) { body.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
   }
-  let t; $("#pq").oninput = (e) => { clearTimeout(t); t = setTimeout(() => { q = e.target.value.trim(); refresh(); }, 250); };
+  let qt; $("#pq").oninput = (e) => { clearTimeout(qt); qt = setTimeout(() => { q = e.target.value.trim(); refresh(); }, 250); };
   $("#ptopics").onclick = (e) => pickTopic(e, refresh);
   refresh();
 }
@@ -566,7 +591,7 @@ async function constellationMap(onFilterReady) {
   if (token !== routeToken) return;
   const joined = data.nodes.filter((n) => !n.waiting).length, waiting = data.nodes.length - joined;
   body.innerHTML = `<div class="map-wrap"><canvas id="mapCv" role="img" aria-label="Map of the schools in the network, the principals who joined, and their connections"></canvas>
-    <div class="map-legend"><span><i style="background:var(--gold)"></i>your connections</span><span><i style="background:var(--sky)"></i>other connections</span><span>${joined} principal${joined === 1 ? "" : "s"} joined${waiting ? ` · ${waiting} schools waiting` : ""}</span></div>
+    <div class="map-legend"><span><i style="background:var(--gold)"></i>your connections</span><span><i style="background:var(--sky)"></i>other connections</span><span>${t(joined === 1 ? "1 principal joined" : "{n} principals joined", { n: joined })}${waiting ? ` · ${t("{n} schools waiting", { n: waiting })}` : ""}</span></div>
     <div class="map-tip" id="mapTip" hidden></div></div>`;
   const cv = $("#mapCv"), tip = $("#mapTip");
   onFilterReady(data.nodes);
@@ -605,8 +630,8 @@ async function constellationMap(onFilterReady) {
   const P = (n) => [n.x * g.w, n.y * g.h];
   const rd = seeded(5), dust = Array.from({ length: 140 }, () => ({ x: rd(), y: rd(), s: rd() < .1 ? 1.6 : 1, a: .15 + rd() * .35 }));
 
-  animate((t) => {
-    const { c, w, h } = g, k = t / 1000; c.clearRect(0, 0, w, h);
+  animate((ts) => {
+    const { c, w, h } = g, k = ts / 1000; c.clearRect(0, 0, w, h);
     for (const s of dust) { c.fillStyle = `rgba(242,240,234,${s.a})`; c.fillRect(s.x * w, s.y * h, s.s, s.s); }
     const on = inFocus;
     if (w >= 600) { // on narrow screens the legend above the map does this job
@@ -632,13 +657,13 @@ async function constellationMap(onFilterReady) {
       c.globalAlpha = (on(n) || me ? tw : .15) * (n.waiting && n !== hover ? .7 : 1);
       c.fillStyle = me ? "#E3B55A" : n.c; c.shadowColor = c.fillStyle; c.shadowBlur = me || n === hover ? 18 : n.waiting ? 0 : 8;
       c.beginPath(); c.arc(x, y, rad, 0, 7); c.fill(); c.shadowBlur = 0; c.globalAlpha = 1;
-      if (me || n === hover) { c.fillStyle = "#F2F0EA"; c.font = "500 12px DM Sans, sans-serif"; c.textAlign = "center"; c.fillText(me ? "You" : n.name, x, y - rad - 8); }
+      if (me || n === hover) { c.fillStyle = "#F2F0EA"; c.font = "500 12px DM Sans, sans-serif"; c.textAlign = "center"; c.fillText(me ? t("You") : n.name, x, y - rad - 8); }
     }
   });
   const pick = (e) => { const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top; let best = null, bd = 20; for (const n of nodes) { const d = Math.hypot(n.x * g.w - x, n.y * g.h - y); if (d < bd) { bd = d; best = n; } } return best; };
   const show = (n) => {
     hover = n; tip.hidden = !n;
-    if (n?.waiting) tip.innerHTML = `${avatar({ id: n.id, full_name: n.name }, "sm")}<div><b>${esc(n.name)}</b><div class="tiny">${esc(place(n))} · Principal not on the network yet</div></div>`;
+    if (n?.waiting) tip.innerHTML = `${avatar({ id: n.id, full_name: n.name }, "sm")}<div><b>${esc(n.name)}</b><div class="tiny">${esc(place(n))} · <span>Principal not on the network yet</span></div></div>`;
     else if (n) tip.innerHTML = `${avatar({ id: n.id, avatar: n.avatar, full_name: n.name }, "sm")}<div><b>${esc(n.name)}</b><div class="tiny">${esc([n.school, n.country].filter(Boolean).join(" · "))}</div></div><a class="btn btn-soft btn-sm" href="#/u/${esc(n.id)}">View</a>`;
   };
   cv.onpointermove = (e) => { if (e.pointerType !== "mouse") return; const n = pick(e); if (n !== hover) show(n); };
@@ -666,17 +691,17 @@ async function profile(id) {
         <div class="id">
           <h1 class="display">${esc(p.full_name)}</h1>
           <p class="role">${esc([p.role_title, p.school].filter(Boolean).join(" · ") || "Principal")}</p>
-          <div class="loc">${place(p) ? `<span>${esc(place(p))}</span>` : ""}${p.level ? `<span>${esc(state.levels[p.level] || "")}</span>` : ""}<span><b style="color:var(--gold-ink)">${p.connections}</b> connection${p.connections === 1 ? "" : "s"}</span></div>
+          <div class="loc">${place(p) ? `<span>${esc(place(p))}</span>` : ""}${p.level ? `<span>${esc(state.levels[p.level] || "")}</span>` : ""}<span>${t(p.connections === 1 ? "{n} connection" : "{n} connections", { n: `<b style="color:var(--gold-ink)">${p.connections}</b>` })}</span></div>
         </div>
         <div class="acts" id="profActs">${connectButtons(p)}${p.connection === "connected" ? `<button class="btn btn-soft" data-act="contact">${icon("contact")}Save contact</button>` : ""}${self ? `<a class="btn btn-soft" href="#/meet">${icon("qr")}My code</a>` : ""}</div>
       </div>
 
       <div class="prof-body">
         <div class="stack">
-          ${p.connection === "received" && p.note ? `<div class="note-in"><span class="label">Their note</span><p style="margin-top:6px">“${esc(p.note)}”</p></div>` : ""}
-          <section class="panel"><h3>About</h3>${p.bio ? `<p class="bio">${esc(p.bio)}</p>` : `<p class="tiny">${self ? 'Add a few lines about you and your school in <a href="#/me/edit">Edit profile</a>.' : "No bio yet."}</p>`}</section>
+          ${p.connection === "received" && p.note ? `<div class="note-in"><span class="label">Their note</span><p style="margin-top:6px" translate="no" dir="auto">“${esc(p.note)}”</p></div>` : ""}
+          <section class="panel"><h3>About</h3>${p.bio ? `<p class="bio" translate="no" dir="auto">${esc(p.bio)}</p>` : `<p class="tiny">${self ? 'Add a few lines about you and your school in <a href="#/me/edit">Edit profile</a>.' : "No bio yet."}</p>`}</section>
           <section class="panel stack"><div><h3>Working on</h3>${chipRow(p.topics)}</div><div><h3>Strong in, happy to help</h3>${chipRow(p.gives, "gold")}</div><div><h3>Wants to learn</h3>${chipRow(p.seeks, "plain")}</div></section>
-          <section class="panel"><h3>On the board</h3>${data.posts.length ? `<div class="stack">${data.posts.map((x) => `<div><span class="kind ${esc(x.kind)}">${KIND_NAMES[x.kind] || "Post"}</span> <span class="tiny">${ago(x.created_at)}</span><p style="margin-top:6px;white-space:pre-line" dir="auto">${esc(x.text)}</p></div>`).join("")}</div>` : `<p class="tiny">No posts yet.</p>`}</section>
+          <section class="panel"><h3>On the board</h3>${data.posts.length ? `<div class="stack">${data.posts.map((x) => `<div><span class="kind ${esc(x.kind)}">${KIND_NAMES[x.kind] || "Post"}</span> <span class="tiny">${ago(x.created_at)}</span><p style="margin-top:6px;white-space:pre-line" dir="auto" translate="no">${esc(x.text)}</p></div>`).join("")}</div>` : `<p class="tiny">No posts yet.</p>`}</section>
         </div>
         <aside class="stack">
           <section class="panel">
@@ -744,7 +769,11 @@ function editProfile() {
           </div>
         </section>
         <section class="panel-lg group">
-          <div><h3 style="font-size:1.1rem">Email notifications</h3><p class="tiny">Sent to ${esc(me.email)}. At most one email per conversation every two hours, and none while you're on the site.</p></div>
+          <div><h3 style="font-size:1.1rem">Language</h3><p class="tiny">The site, and what other principals write, in your language. Emails and notifications too.</p></div>
+          ${langPicker("editLang", "lang-pick lang-pick-wide")}
+        </section>
+        <section class="panel-lg group">
+          <div><h3 style="font-size:1.1rem">Email notifications</h3><p class="tiny">${t("Sent to {email}. At most one email per conversation every two hours, and none while you're on the site.", { email: esc(me.email) })}</p></div>
           <label class="check"><input type="checkbox" name="email_notify" id="e-notify" ${me.email_notify !== false ? "checked" : ""}><span>Email me about connection requests and new messages</span></label>
         </section>
         <section class="panel-lg group">
@@ -770,7 +799,7 @@ function editProfile() {
     sId.value = x ? x.id : "";
     for (const [id, v] of [["#e-city", x?.city], ["#e-country", x?.country]]) { const el = $(id); if (x) el.value = v; el.readOnly = !!x; }
     if (x && x.level && !$("#e-level").value) $("#e-level").value = x.level;
-    $("#schoolHint").textContent = x ? `From the Yael Foundation network · ${place(x)}` : "Pick your school from the list. Not listed? Just type its name.";
+    $("#schoolHint").textContent = x ? t("From the Yael Foundation network · {place}", { place: place(x) }) : t("Pick your school from the list. Not listed? Just type its name.");
   };
   api("GET", "/api/schools").then(({ schools }) => {
     for (const x of schools) opts.set(label(x), x);
@@ -805,6 +834,7 @@ function editProfile() {
   });
 
   pushControl($("#pushBox"));
+  $("#editLang").onchange = (e) => chooseLang(e.target.value);
 
   $("#delAccount").onclick = () => {
     const d = document.createElement("dialog");
@@ -861,7 +891,7 @@ async function messages(withId) {
   async function loadList() {
     const { conversations } = await api("GET", "/api/messages");
     if (token !== routeToken) return;
-    let html = conversations.map((c) => `<a class="conv" href="#/messages/${esc(c.with.id)}" ${c.with.id === withId ? 'aria-current="true"' : ""}>${avatar(c.with, "sm")}<span class="who"><b>${esc(c.with.full_name)}</b><span>${c.last.mine ? "You: " : ""}${esc(c.last.body)}</span></span>${c.unread ? `<span class="dot">${c.unread}</span>` : `<span class="tiny">${ago(c.last.at)}</span>`}</a>`).join("");
+    let html = conversations.map((c) => `<a class="conv" href="#/messages/${esc(c.with.id)}" ${c.with.id === withId ? 'aria-current="true"' : ""}>${avatar(c.with, "sm")}<span class="who"><b>${esc(c.with.full_name)}</b><span>${c.last.mine ? `${t("You:")} ` : ""}<span translate="no">${esc(c.last.body)}</span></span></span>${c.unread ? `<span class="dot">${c.unread}</span>` : `<span class="tiny">${ago(c.last.at)}</span>`}</a>`).join("");
     if (!conversations.length) {
       const { connected } = await api("GET", "/api/connections");
       if (token !== routeToken) return;
@@ -879,9 +909,10 @@ async function messages(withId) {
   let lastId = 0, lastDay = "";
   const bubble = (m) => {
     const day = new Date(m.at).toDateString();
-    const sep = day !== lastDay ? `<div class="day">${new Date(m.at).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}</div>` : "";
+    const sep = day !== lastDay ? `<div class="day">${new Date(m.at).toLocaleDateString(locale(), { weekday: "short", day: "numeric", month: "short" })}</div>` : "";
     lastDay = day; lastId = Math.max(lastId, m.id);
-    return `${sep}<div class="bubble ${m.mine ? "mine" : ""}">${esc(m.body)}<time>${clock(m.at)}</time></div>`;
+    const orig = m.original ? `<span class="orig" translate="no" dir="auto" lang="${esc(m.lang)}" hidden>${esc(m.original)}</span><button class="linkish quiet orig-btn" data-act="msgOrig" type="button">${esc(t("Translated from {lang}", { lang: langName(m.lang) || t("another language") }))}</button>` : "";
+    return `${sep}<div class="bubble ${m.mine ? "mine" : ""}"><span translate="no" dir="auto">${esc(m.body)}</span>${orig}<time>${clock(m.at)}</time></div>`;
   };
   let data;
   try { data = await api("GET", `/api/messages/${withId}`); }
@@ -893,9 +924,14 @@ async function messages(withId) {
   const w = data.with;
   $("#thread").innerHTML = `
     <div class="thread-head"><a href="#/messages" class="btn btn-quiet btn-sm" aria-label="Back to conversations" style="padding:.4rem">${icon("back")}</a>${avatar(w, "sm")}<div style="display:grid"><a href="#/u/${esc(w.id)}">${esc(w.full_name)}</a><span class="tiny">${esc(where(w))}</span></div></div>
-    <div class="bubbles" id="bubbles">${data.messages.length ? data.messages.map(bubble).join("") : `<div class="day" id="hello">Say shalom to ${esc(first(w.full_name))}.</div>`}</div>
+    <div class="bubbles" id="bubbles">${data.messages.length ? data.messages.map(bubble).join("") : `<div class="day" id="hello">${esc(t("Say shalom to {name}.", { name: first(w.full_name) }))}</div>`}</div>
     <form class="composer" id="composer"><textarea class="textarea" id="msgIn" rows="1" maxlength="2000" placeholder="Write a message…" aria-label="Message"></textarea><button class="btn btn-primary" type="submit" aria-label="Send">${icon("send")}</button></form>`;
   const box = $("#bubbles"), input = $("#msgIn");
+  box.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-act=msgOrig]"); if (!b) return;
+    const o = b.previousElementSibling, main = o.previousElementSibling;
+    o.hidden = !o.hidden; main.hidden = !o.hidden;
+  });
   const toBottom = () => (box.scrollTop = box.scrollHeight);
   toBottom();
   refreshMe().catch(() => {});
@@ -928,7 +964,7 @@ async function messages(withId) {
 // =============================================================
 // board
 // =============================================================
-const LANGS = { he: "Hebrew", ru: "Russian", es: "Spanish", fr: "French", pt: "Portuguese", de: "German", uk: "Ukrainian", it: "Italian", hu: "Hungarian", ar: "Arabic", nl: "Dutch" };
+const fromLang = (code) => t("Translated from {lang}", { lang: langName(code) || t("another language") });
 
 async function board(focus) {
   let data;
@@ -949,7 +985,7 @@ async function board(focus) {
             <input class="input" id="bq" type="search" placeholder="Search the board" aria-label="Search the board">
           </div>
           <p class="tiny" id="boardNone" hidden>Nothing matches. Try another word or show all posts.</p>
-          <div class="stack" id="posts">${data.posts.length ? data.posts.map((p) => postHTML(p, data.me)).join("") : `<div class="empty" id="noPosts"><b>No posts yet.</b><span>Ask a question, share an idea, or offer help. Write in any language — it's translated to English for everyone.</span></div>`}</div>
+          <div class="stack" id="posts">${data.posts.length ? data.posts.map((p) => postHTML(p, data.me)).join("") : `<div class="empty" id="noPosts"><b>No posts yet.</b><span>Ask a question, share an idea, or offer help. Write in your language: everyone reads it in theirs.</span></div>`}</div>
         </div>
         <form class="panel-lg compose" id="compose" novalidate>
           <button type="button" class="compose-open" id="composeOpen">${avatar(state.me, "sm")}<span class="grow">Ask, share an idea or offer help…</span><span class="plus" aria-hidden="true">+</span></button>
@@ -959,7 +995,7 @@ async function board(focus) {
             <label><input type="radio" name="kind" value="offer" id="k-o">Offer help</label>
           </div><button type="button" class="btn btn-quiet btn-sm compose-close" id="composeClose">Close</button></div>
           <label class="field"><span>Your post</span><textarea class="textarea" id="postText" name="text" maxlength="1000" dir="auto" placeholder="How are you handling… ? / We tried… / Happy to share…"></textarea>
-            <span class="hint">Posted under your name. Any language works; it's translated to English once, when you post.</span></label>
+            <span class="hint">Posted under your name. Write in any language: each principal reads it in their own.</span></label>
           <button class="btn btn-gold btn-block" type="submit">Post to the board</button>
         </form>
       </div>
@@ -974,14 +1010,14 @@ async function board(focus) {
     const fd = new FormData(e.target), btn = e.target.querySelector("[type=submit]");
     const text = String(fd.get("text") || "").trim();
     if (text.length < 3) { toast("Write a few words first."); return; }
-    btn.disabled = true; btn.textContent = /[^\u0000-ɏ\s]/.test(text) ? "Translating and posting…" : "Posting…";
+    btn.disabled = true; btn.textContent = t("Translating and posting…");
     try {
       const { post } = await api("POST", "/api/board", { kind: fd.get("kind"), text });
       $("#noPosts")?.remove();
       data.posts.unshift(post); list.insertAdjacentHTML("afterbegin", postHTML({ ...post, replies: 0 }, state.me.id));
-      e.target.reset(); form.classList.remove("open"); toast(post.original ? `Posted, translated from ${LANGS[post.lang] || "your language"}.` : "Posted.");
+      e.target.reset(); form.classList.remove("open"); toast(post.lang === "und" ? t("Posted. It will be translated in a moment.") : t("Posted. Everyone reads it in their language."));
     } catch (err) { toast(err.message); }
-    btn.disabled = false; btn.textContent = "Post to the board";
+    btn.disabled = false; btn.textContent = t("Post to the board");
   };
   wireConnect(root, () => {});
 
@@ -1017,7 +1053,7 @@ async function board(focus) {
           $(".reply-list", box).insertAdjacentHTML("beforeend", replyHTML(comment, state.me.id, state.admin));
           ta.value = ""; ta.style.height = "auto";
           const n = $("[data-act=replies]", post); n.dataset.n = Number(n.dataset.n) + 1; n.innerHTML = repliesLabel(n.dataset.n, true);
-          toast(comment.original ? `Replied, translated from ${LANGS[comment.lang] || "your language"}.` : "Replied. Everyone in the conversation will be notified.");
+          toast(t("Replied. Everyone in the conversation will be notified."));
         } catch (err) { toast(err.message); }
         btn.disabled = false;
       };
@@ -1034,7 +1070,7 @@ async function board(focus) {
     }
     if (t.dataset.act === "replyOrig") { const o = t.closest(".reply").querySelector(".orig"); o.hidden = !o.hidden; return; }
     if (t.dataset.act === "replyDel") {
-      if (!confirm("Remove this reply?")) return;
+      if (!confirm(tr("Remove this reply?"))) return;
       try {
         await api("DELETE", `/api/board/comments/${t.dataset.id}`);
         const post = t.closest(".post"); t.closest(".reply").remove();
@@ -1043,20 +1079,21 @@ async function board(focus) {
       return;
     }
     if (t.dataset.act === "orig") {
-      const o = $(".orig", t.closest(".post")); o.hidden = !o.hidden; t.textContent = t.textContent.replace(o.hidden ? "Hide" : "Show", o.hidden ? "Show" : "Hide");
+      const post = t.closest(".post"), o = $(".orig", post); o.hidden = !o.hidden; $(".text", post).hidden = !o.hidden;
+      t.textContent = `${fromLang(o.lang)} · ${o.hidden ? tr("Show original") : tr("Show translation")}`;
     } else if (t.dataset.act === "report") {
       const reason = await askReport();
       if (reason === null) return;
       try { await api("POST", `/api/board/${t.dataset.id}/report`, { reason }); toast("Thank you. The Yael Foundation team will take a look."); t.remove(); }
       catch (err) { toast(err.message); }
     } else if (t.dataset.act === "adminDel") {
-      if (!confirm("Remove this post for everyone?")) return;
+      if (!confirm(tr("Remove this post for everyone?"))) return;
       try { await api("DELETE", `/api/admin/posts/${t.dataset.id}`); t.closest(".post").remove(); toast("Post removed."); } catch (err) { toast(err.message); }
     } else if (t.dataset.act === "del") {
       try { await api("DELETE", `/api/board/${t.dataset.id}`); t.closest(".post").remove(); toast("Post removed."); } catch (err) { toast(err.message); }
     } else if (t.dataset.act === "help") {
       const p = data.posts.find((x) => x.id === t.dataset.id);
-      const note = `About your post: “${p.text.slice(0, 120)}${p.text.length > 120 ? "…" : ""}” — ${(REPLY[p.kind] || REPLY.question).note}`;
+      const note = tr("About your post: “{text}” — {note}", { text: `${p.text.slice(0, 120)}${p.text.length > 120 ? "…" : ""}`, note: tr((REPLY[p.kind] || REPLY.question).note) });
       const person = await api("GET", `/api/people/${p.author.id}`).then((r) => r.profile).catch(() => null);
       if (person?.connection === "connected") {
         try { sessionStorage.setItem(`draft:${p.author.id}`, `${note}\n\n`); } catch { /* storage unavailable */ }
@@ -1109,14 +1146,14 @@ const REPLY = {
   offer: { label: "I'm interested", note: "I'd love to take you up on this." },
 };
 
-const repliesLabel = (n, open) => `${icon("reply")}${open ? "Hide replies" : Number(n) ? `${n} repl${Number(n) === 1 ? "y" : "ies"}` : "Reply"}`;
+const repliesLabel = (n, open) => `${icon("reply")}${open ? t("Hide replies") : Number(n) ? t(Number(n) === 1 ? "1 reply" : "{n} replies", { n }) : t("Reply")}`;
 
 function replyHTML(c, meId, admin) {
   const a = c.author, mine = a.id === meId;
   return `<div class="reply">${avatar(a, "xs")}<div class="reply-body">
     <div class="reply-head"><a href="#/u/${esc(a.id)}">${esc(a.full_name)}</a><span class="tiny">${ago(c.at)}</span></div>
-    <p dir="auto">${esc(c.text)}</p>
-    ${c.original ? `<p class="orig" dir="auto" lang="${esc(c.lang)}" hidden>${esc(c.original)}</p><button class="linkish quiet" data-act="replyOrig" type="button">Translated from ${LANGS[c.lang] || "another language"} · original</button>` : ""}
+    <p dir="auto" translate="no">${esc(c.text)}</p>
+    ${c.original ? `<p class="orig" dir="auto" lang="${esc(c.lang)}" translate="no" hidden>${esc(c.original)}</p><button class="linkish quiet" data-act="replyOrig" type="button">${esc(fromLang(c.lang))} · ${t("original")}</button>` : ""}
     ${mine || admin ? `<button class="linkish quiet" data-act="replyDel" data-id="${esc(c.id)}" type="button">${mine ? "Delete" : "Remove"}</button>` : ""}
   </div></div>`;
 }
@@ -1125,12 +1162,12 @@ function postHTML(p, meId) {
   const a = p.author, mine = a.id === meId;
   return `<article class="post fade-in" data-id="${esc(p.id)}" data-kind="${esc(p.kind)}">
     <div class="head">${avatar(a, "sm")}<div class="who"><span><a href="#/u/${esc(a.id)}">${esc(a.full_name)}</a></span><span>${esc(where(a))}${where(a) ? " · " : ""}${ago(p.at)}</span></div><span class="kind ${esc(p.kind)}">${KIND_NAMES[p.kind] || "Post"}</span></div>
-    <p class="text" dir="auto">${esc(p.text)}</p>
-    ${p.original ? `<p class="orig" dir="auto" lang="${esc(p.lang)}" hidden>${esc(p.original)}</p>` : ""}
+    <p class="text" dir="auto" translate="no">${esc(p.text)}</p>
+    ${p.original ? `<p class="orig" dir="auto" lang="${esc(p.lang)}" translate="no" hidden>${esc(p.original)}</p>` : ""}
     <div class="foot">
-      ${mine ? `<button class="linkish" data-act="del" data-id="${esc(p.id)}">Delete</button>` : `<button class="btn btn-soft btn-sm" data-act="help" data-id="${esc(p.id)}">${(REPLY[p.kind] || REPLY.question).label}</button>`}
+      ${mine ? `<button class="linkish" data-act="del" data-id="${esc(p.id)}">Delete</button>` : `<button class="btn btn-soft btn-sm" data-act="help" data-id="${esc(p.id)}">${t((REPLY[p.kind] || REPLY.question).label)}</button>`}
       <button class="btn btn-quiet btn-sm reply-btn" data-act="replies" data-n="${p.replies || 0}" type="button">${repliesLabel(p.replies || 0, false)}</button>
-      ${p.original ? `<button class="linkish" data-act="orig">Translated from ${LANGS[p.lang] || "another language"} · Show original</button>` : ""}
+      ${p.original ? `<button class="linkish" data-act="orig">${esc(fromLang(p.lang))} · ${t("Show original")}</button>` : ""}
       <span class="foot-end">${mine ? "" : `<button class="linkish quiet" data-act="report" data-id="${esc(p.id)}">Report</button>`}${state.admin && !mine ? `<button class="linkish quiet" data-act="adminDel" data-id="${esc(p.id)}">Remove</button>` : ""}</span>
     </div>
     <div class="replies" hidden></div>
@@ -1160,7 +1197,7 @@ function forgotPage() {
     try {
       await api("POST", "/api/auth/forgot", { email: $("#f-email").value });
       e.target.innerHTML = `<p class="label">Check your email</p><h2 class="display" style="font-size:2.2rem">A link is on its way</h2>
-        <p class="muted">If there's an account for <b>${esc($("#f-email")?.value || "that email")}</b>, you'll get an email with a link to choose a new password. It works for one hour. Can't find it? Look in spam or promotions.</p>
+        <p class="muted">${t("If there's an account for {email}, you'll get an email with a link to choose a new password. It works for one hour. Can't find it? Look in spam or promotions.", { email: `<b translate="no">${esc($("#f-email")?.value || "")}</b>` })}</p>
         <a class="btn btn-soft" href="#/signin">Back to sign in</a>`;
     } catch (ex) { err.textContent = ex.message; btn.disabled = false; }
   };
@@ -1186,7 +1223,7 @@ function resetPage(token) {
     try {
       await api("POST", "/api/auth/reset", { token, password: pw });
       await refreshMe(); go("#/"); toast("Your new password is saved. Other devices were signed out.");
-    } catch (ex) { err.innerHTML = `${esc(ex.message)} <a href="#/forgot">Get a new link</a>`; btn.disabled = false; }
+    } catch (ex) { err.innerHTML = `${esc(t(ex.message))} <a href="#/forgot">${t("Get a new link")}</a>`; btn.disabled = false; }
   };
 }
 
@@ -1294,7 +1331,7 @@ function shareLink(title, url) {
 
 /** Adds a connection to the phone's contacts (the app), or downloads a vCard (browsers). */
 function saveContact(p) {
-  const c = { name: p.full_name, email: p.email || "", phone: p.phone || "", company: p.school || "", title: p.role_title || "", note: "Met through the Yael Summit network" };
+  const c = { name: p.full_name, email: p.email || "", phone: p.phone || "", company: p.school || "", title: p.role_title || "", note: t("Met through the Yael Summit network") };
   if (APP && window.Android.saveContact) { try { window.Android.saveContact(JSON.stringify(c)); return; } catch { /* fall through */ } }
   const v = (s) => String(s).replace(/([,;\\])/g, "\\$1").replace(/\n/g, "\\n");
   const parts = c.name.split(" "), last = parts.length > 1 ? parts.pop() : "";
@@ -1373,7 +1410,7 @@ async function meetThem(id) {
         ${avatar(p, "xl")}
         <h1 class="display">${esc(p.full_name)}</h1>
         <p class="muted">${esc([p.role_title, p.school].filter(Boolean).join(" · ") || "Principal")}${place(p) ? `<br>${esc(place(p))}` : ""}</p>
-        <div class="meet-acts">${p.connection ? connectButtons(p) : `<button class="btn btn-gold" data-act="connect" data-id="${esc(p.id)}" data-name="${esc(p.full_name)}" data-note="It was great to meet you in person at the Yael Summit!">Connect</button>`}${already ? `<button class="btn btn-soft" data-act="contact">${icon("contact")}Save contact</button>` : ""}</div>
+        <div class="meet-acts">${p.connection ? connectButtons(p) : `<button class="btn btn-gold" data-act="connect" data-id="${esc(p.id)}" data-name="${esc(p.full_name)}" data-note="${esc(t("It was great to meet you in person at the Yael Summit!"))}">Connect</button>`}${already ? `<button class="btn btn-soft" data-act="contact">${icon("contact")}Save contact</button>` : ""}</div>
         <a class="btn btn-quiet btn-sm" href="#/u/${esc(p.id)}">View full profile →</a>
       </section>
     </div>`;
@@ -1462,7 +1499,7 @@ function privacy() {
     <h2>Services that help run the site</h2>
     <ul>
       <li><b>Cloudflare</b> hosts the site and stores its data.</li>
-      <li><b>Google Gemini</b> translates board posts written in other languages into English (once, when posted) and writes the optional "Why meet?" suggestion from two profiles. Only that text is sent.</li>
+      <li><b>Google Gemini</b> translates board posts, replies, messages and connection notes into the readers' languages (once, when written), and writes the optional "Why meet?" suggestion from two profiles. Only that text is sent.</li>
       <li><b>Resend</b> sends the notification emails, if they're turned on.</li>
     </ul>
 
@@ -1482,11 +1519,11 @@ function privacy() {
       <li>Don't use the network for advertising or fundraising appeals without the foundation's agreement.</li>
       <li>The Yael Foundation may remove posts or accounts that break these terms. Anyone can report a board post.</li>
     </ul>
-    <p class="tiny">Last updated ${new Date(2026, 9, 1).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}.</p>
+    <p class="tiny">${t("Last updated")} ${new Date(2026, 9, 1).toLocaleDateString(locale(), { day: "numeric", month: "long", year: "numeric" })}.</p>
     <p style="margin-top:18px"><a class="btn btn-soft btn-sm" href="${state.me ? "#/" : "#/join"}">← Back</a></p>
   </div>`;
   api("GET", "/api/stats").then((st) => {
-    if (st.contact && $("#contactLine")) $("#contactLine").innerHTML = ` at <a href="mailto:${esc(st.contact)}">${esc(st.contact)}</a>.`;
+    if (st.contact && $("#contactLine")) $("#contactLine").innerHTML = ` ${t("at")} <a href="mailto:${esc(st.contact)}" translate="no">${esc(st.contact)}</a>.`;
   }).catch(() => {});
 }
 
@@ -1516,7 +1553,7 @@ async function adminPage(tab = "members") {
   });
   if (!ok) return;
   const body = $("#adminBody"), byLabel = new Map(schools.map((x) => [`${x.name} — ${place(x)}`, x]));
-  const date = (t) => (t ? new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "never");
+  const date = (t) => (t ? new Date(t).toLocaleDateString(locale(), { day: "numeric", month: "short", year: "numeric" }) : "never");
 
   const members = (q = "") => {
     const list = data.members.filter((m) => !q || [m.full_name, m.email, m.school, m.country].join(" ").toLowerCase().includes(q));
@@ -1559,7 +1596,7 @@ async function adminPage(tab = "members") {
         if (choice === undefined) return;
         await api("PUT", `/api/admin/members/${id}`, { school_id: choice }); toast(choice ? "School updated." : "School unlinked.");
       } else if (act === "delpost") {
-        if (!confirm("Remove this post for everyone?")) return;
+        if (!confirm(tr("Remove this post for everyone?"))) return;
         await api("DELETE", `/api/admin/posts/${id}`); toast("Post removed.");
       } else if (act === "dismiss") {
         await api("DELETE", `/api/admin/reports/${id}`); toast("Report closed. The post stays.");
@@ -1570,7 +1607,7 @@ async function adminPage(tab = "members") {
 }
 
 // ---------- impact (admin only) ----------
-const fmt = (n) => Number(n).toLocaleString();
+const fmt = (n) => Number(n).toLocaleString(locale());
 const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
 const svgEsc = (t) => esc(t);
 
@@ -1582,7 +1619,7 @@ function growthChart(rows) {
   const x = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R), y = (v) => T + (1 - v / max) * (H - T - B);
   const line = (k) => rows.map((r, i) => `${i ? "L" : "M"}${x(r.t).toFixed(1)} ${y(r[k]).toFixed(1)}`).join("");
   const ticks = [0, Math.round(max / 2), max];
-  const date = (t) => new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const date = (t) => new Date(t).toLocaleDateString(locale(), { day: "numeric", month: "short" });
   const last = rows[rows.length - 1];
   return `<div class="viz" data-chart="growth">
     <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Members and connections over time">
@@ -1636,7 +1673,7 @@ function wireTips(root, growth) {
         const row = growth.reduce((a, b) => (Math.abs(b.t - t) < Math.abs(a.t - t) ? b : a));
         const cx = L + ((row.t - t0) / Math.max(1, t1 - t0)) * (vb.width - L - R), c = $(".cross", svg);
         c.removeAttribute("hidden"); c.setAttribute("x1", cx); c.setAttribute("x2", cx);
-        place(e, `<b>${new Date(row.t).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</b><span><i class="k1"></i>${fmt(row.connections)} connections</span><span><i class="k2"></i>${fmt(row.members)} members</span>`);
+        place(e, `<b>${new Date(row.t).toLocaleDateString(locale(), { day: "numeric", month: "short", year: "numeric" })}</b><span><i class="k1"></i>${fmt(row.connections)} connections</span><span><i class="k2"></i>${fmt(row.members)} members</span>`);
       });
     } else {
       viz.addEventListener("pointermove", (e) => { const g = e.target.closest(".row"); if (g) place(e, esc(g.dataset.tip)); else tip.hidden = true; });
@@ -1667,7 +1704,7 @@ async function impactView(box) {
       <div class="impact-h"><h3>Growth</h3><span class="legend-inline"><i class="k1"></i>Connections <i class="k2"></i>Members</span></div>
       ${growthChart(d.growth)}
       <details class="tiny"><summary>Show as a table</summary><table class="viz-table"><thead><tr><th>Date</th><th>Members</th><th>Connections</th></tr></thead><tbody>
-        ${d.growth.map((r) => `<tr><td>${new Date(r.t).toLocaleDateString()}</td><td>${fmt(r.members)}</td><td>${fmt(r.connections)}</td></tr>`).join("")}</tbody></table></details>
+        ${d.growth.map((r) => `<tr><td>${new Date(r.t).toLocaleDateString(locale())}</td><td>${fmt(r.members)}</td><td>${fmt(r.connections)}</td></tr>`).join("")}</tbody></table></details>
     </section>
 
     <section class="panel impact-panel">
@@ -1752,6 +1789,7 @@ function summit() {
 // =============================================================
 (async () => {
   view.innerHTML = loadingHTML;
+  await i18nReady;
   try { await refreshMe(); } catch { state.me = null; }
   route();
 })();
