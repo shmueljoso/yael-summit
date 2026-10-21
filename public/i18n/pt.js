@@ -135,7 +135,7 @@ export default {
   "Add a few lines about you and your school in": "Adicione algumas linhas sobre você e sua escola em",
   "No bio yet.": "Ainda sem descrição.",
   "Working on": "Trabalhando em",
-  "Strong in, happy to help": "Forte em, feliz em ajudar",
+  "Strong in, happy to help": "Pontos fortes e disposição para ajudar",
   "Wants to learn": "Quer aprender",
   "On the board": "No mural",
   "No posts yet.": "Ainda sem publicações.",
