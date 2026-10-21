@@ -6,11 +6,14 @@
  *  - Browsers and home-screen apps (Android, iPhone 16.4+, desktop) get a Web Push "tickle" with
  *    no payload. The service worker then reads the newest notification from /api/notifications.
  *    That keeps the content off third-party push servers and needs no message encryption.
- *  - The Android app asks /api/notifications by itself in the background.
+ *  - The Android app gets a Firebase Cloud Messaging wake-up, also with no content (src/lib/fcm.js),
+ *    and reads /api/notifications itself. Without Firebase it still checks every ~15 minutes.
  *
  * The VAPID key pair that signs pushes is created on first use and kept in the meta table,
  * so there is nothing to configure.
  */
+import { fcmSend } from "./fcm.js";
+
 const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const enc = (obj) => b64u(new TextEncoder().encode(JSON.stringify(obj)));
 
@@ -39,19 +42,24 @@ async function vapidHeader(keys, endpoint, contact) {
   return `vapid t=${unsigned}.${b64u(sig)}, k=${keys.publicKey}`;
 }
 
-/** Wakes every browser the member subscribed. Expired subscriptions are removed. */
+/** Wakes every browser and Android app the member signed up. Expired subscriptions are removed. */
 export async function pushTo(env, d, userId) {
   const { results } = await d.prepare("SELECT endpoint FROM push_subs WHERE user_id = ?").bind(userId).all();
   if (!results.length) return;
+  const gone = (endpoint) => d.prepare("DELETE FROM push_subs WHERE endpoint = ?").bind(endpoint).run();
+  const apps = results.filter((r) => r.endpoint.startsWith("fcm:"));
+  const browsers = results.filter((r) => !r.endpoint.startsWith("fcm:"));
+  await Promise.all(apps.map(async ({ endpoint }) => { if ((await fcmSend(env, endpoint.slice(4))) === "gone") await gone(endpoint); }));
+  if (!browsers.length) return;
   const keys = await vapidKeys(d);
   const contact = `mailto:${env.CONTACT_EMAIL || "noreply@yaelfoundation.org"}`;
-  await Promise.all(results.map(async ({ endpoint }) => {
+  await Promise.all(browsers.map(async ({ endpoint }) => {
     try {
       const r = await fetch(endpoint, {
         method: "POST",
         headers: { authorization: await vapidHeader(keys, endpoint, contact), ttl: "86400", urgency: "high", "content-length": "0" },
       });
-      if (r.status === 404 || r.status === 410) await d.prepare("DELETE FROM push_subs WHERE endpoint = ?").bind(endpoint).run();
+      if (r.status === 404 || r.status === 410) await gone(endpoint);
     } catch { /* the push service is unreachable; the next notification will try again */ }
   }));
 }

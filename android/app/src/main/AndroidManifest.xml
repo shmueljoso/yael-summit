@@ -57,6 +57,15 @@
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
 
+        <!-- Firebase wakes the app the moment there's something new (see FcmService) -->
+        <service
+            android:name=".FcmService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <!-- While "Meet in person" is open, the phone acts as an NFC tag holding the meet link -->
         <service
             android:name=".NfcCardService"

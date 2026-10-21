@@ -227,6 +227,7 @@ async function refreshMe() {
   if (data.counts) state.counts = data.counts;
   if (data.taxonomy) { state.topics = data.taxonomy.topics; state.levels = data.taxonomy.levels; }
   await syncLang();
+  appPushSync();
   renderChrome();
 }
 /** The account remembers its language: a new device takes it on, and a choice made here is saved to it. */
@@ -1257,8 +1258,24 @@ async function pushOn() {
   await api("POST", "/api/push", { endpoint: sub.endpoint });
 }
 
+/** The Android app: tells the site this install's Firebase token, so it can wake the app instantly. */
+function appPushSync() {
+  if (!APP || !state.me || !window.Android.pushToken) return;
+  let token = ""; try { token = window.Android.pushToken(); } catch { return; }
+  const mark = `${state.me.id}|${token}`;
+  let saved = ""; try { saved = localStorage.getItem("fcmSaved"); } catch { /* storage unavailable */ }
+  if (!token || saved === mark) return;
+  api("POST", "/api/push", { endpoint: `fcm:${token}` }).then(() => { try { localStorage.setItem("fcmSaved", mark); } catch { /* ignore */ } }).catch(() => {});
+}
+
 async function pushOff() {
-  if (APP || !("serviceWorker" in navigator)) return;
+  if (APP) {
+    // Signing out: this phone stops getting this account's notifications.
+    let token = ""; try { token = window.Android.pushToken?.() || ""; localStorage.removeItem("fcmSaved"); } catch { /* ignore */ }
+    if (token) await api("DELETE", "/api/push", { endpoint: `fcm:${token}` }).catch(() => {});
+    return;
+  }
+  if (!("serviceWorker" in navigator)) return;
   const reg = await navigator.serviceWorker.getRegistration();
   const sub = reg && (await reg.pushManager.getSubscription());
   if (!sub) return;

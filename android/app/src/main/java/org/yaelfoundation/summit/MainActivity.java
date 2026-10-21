@@ -17,6 +17,7 @@ import android.provider.ContactsContract;
 import android.provider.Settings;
 import android.webkit.PermissionRequest;
 import org.json.JSONObject;
+import com.google.firebase.messaging.FirebaseMessaging;
 import java.util.Arrays;
 import android.graphics.Color;
 import android.net.Uri;
@@ -88,6 +89,12 @@ public class MainActivity extends Activity {
         addShortcuts();
         NotifyJob.createChannel(this);
         NotifyJob.schedule(this);
+        if (BuildConfig.HAS_FCM) {
+            try {
+                FirebaseMessaging.getInstance().getToken().addOnSuccessListener((token) ->
+                    getSharedPreferences("notify", MODE_PRIVATE).edit().putString("fcm", token).apply());
+            } catch (Exception ignored) { /* Google Play services missing: the periodic check still works */ }
+        }
     }
 
     /** Long-press the app icon: "My code" and "Scan a code". */
@@ -266,6 +273,10 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> { sharingUrl = url; if (resumed) startNfcSharing(); });
             return true;
         }
+
+        /** This install's Firebase token ("" until Firebase answers, or without Firebase). The site saves it. */
+        @JavascriptInterface
+        public String pushToken() { return getSharedPreferences("notify", MODE_PRIVATE).getString("fcm", ""); }
 
         /** Phone notifications: "on" or "off". */
         @JavascriptInterface
