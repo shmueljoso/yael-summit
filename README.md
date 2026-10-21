@@ -40,6 +40,7 @@ wrangler.jsonc       הגדרות Cloudflare
 | `DB` (D1) | `wrangler.jsonc` | משתמשים, חיבורים, הודעות, פוסטים. מסד `yael-summit`, המזהה קבוע בקובץ. הטבלאות נוצרות לבד בשימוש הראשון. |
 | `BOARD` (KV) | `wrangler.jsonc` | מטמון AI והגבלות קצב. תמונות פרופיל נשמרות ב-D1 (טבלת `avatars`); תמונות ישנות מ-KV מועתקות לשם אוטומטית. |
 | `GEMINI_API_KEY` | Settings → Variables and Secrets (Secret) | תרגום בלוח ו"Why meet?" |
+| `FCM_SERVICE_ACCOUNT` | Settings → Variables and Secrets (Secret) | התראות מיידיות באפליקציית האנדרואיד |
 | `SIGNUP_CODE` | Settings → Variables and Secrets (Secret), **לא חובה** | אם מוגדר, צריך את הקוד כדי להירשם. לשים אותו בהזמנה למנהלים. |
 | `ADMIN_EMAILS` | Secret | המיילים של צוות הקרן שיש להם גישה לדף הניהול (`#/admin`), מופרדים בפסיק. צריך להירשם לאתר עם המייל הזה. |
 | `RESEND_API_KEY` | Secret, **לא חובה** | מפתח מ-resend.com לשליחת התראות במייל. בלעדיו לא נשלחים מיילים, ושום דבר לא נשבר. |
@@ -85,7 +86,10 @@ wrangler.jsonc       הגדרות Cloudflare
   - Web Push עם מפתחות VAPID שנוצרים לבד בפעם הראשונה ונשמרים בטבלת `meta`. אין צורך בהגדרה.
   - ה-push לא נושא תוכן. ה-service worker שואל את האתר מה חדש ומציג את זה.
   - מפעילים ב-Edit profile ← Phone notifications, או מהכרטיס בדף הבית.
-- **אפליקציית האנדרואיד:** בודקת בעצמה בערך כל 15 דקות (`NotifyJob`) ומציגה התראה רגילה. בלי Firebase ובלי שירות חיצוני.
+- **אפליקציית האנדרואיד:** מקבלת התראה מיד, גם כשהיא סגורה, דרך Firebase Cloud Messaging (`src/lib/fcm.js`, `FcmService`).
+  - גם כאן ההתראה מגוגל לא נושאת תוכן: האפליקציה מתעוררת ושואלת את האתר מה חדש.
+  - צריך שני Secrets: `GOOGLE_SERVICES_JSON` ב-GitHub (Settings ← Secrets and variables ← Actions), עם התוכן של `google-services.json` מ-Firebase; ו-`FCM_SERVICE_ACCOUNT` ב-Cloudflare, עם התוכן של מפתח ה-Service account (Firebase ← Project settings ← Service accounts ← Generate new private key).
+  - בלי אחד מהם, האפליקציה חוזרת לבדיקה עצמית בערך כל 15 דקות (`NotifyJob`), ואנדרואיד יכול לדחות אותה בשעות.
 
 ## הלוח
 - **תגובות** מתחת לכל פוסט (`comments`). כמו פוסטים, הן מתורגמות פעם אחת לכל השפות.

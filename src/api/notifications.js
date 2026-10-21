@@ -20,12 +20,15 @@ export async function key({ env }) {
   return json({ key: (await vapidKeys(await db(env))).publicKey }, 200, { "cache-control": "public, max-age=86400" });
 }
 
-/** POST /api/push { endpoint } — this browser wants notifications. DELETE removes it. */
+/**
+ * POST /api/push { endpoint } — this browser (a Web Push https:// endpoint) or this Android app
+ * ("fcm:<Firebase token>") wants notifications. DELETE removes it.
+ */
 export async function subscribe({ request, env }) {
   const u = await requireUser(env, request);
   const b = await readJson(request);
   const endpoint = clip(b.endpoint, 1000);
-  if (!/^https:\/\//.test(endpoint)) return error(400, "bad_endpoint", "That subscription isn't valid.");
+  if (!/^(https:\/\/|fcm:[\w:-]{20,})/.test(endpoint)) return error(400, "bad_endpoint", "That subscription isn't valid.");
   const d = await db(env);
   await d.prepare("INSERT INTO push_subs (endpoint, user_id, created_at) VALUES (?, ?, ?) ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id")
     .bind(endpoint, u.id, Date.now()).run();

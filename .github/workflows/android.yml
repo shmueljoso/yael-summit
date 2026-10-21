@@ -29,6 +29,19 @@ jobs:
         with:
           gradle-version: "8.11.1"
 
+      # Instant notifications: the Firebase config comes from the GOOGLE_SERVICES_JSON secret
+      # (the google-services.json file from Firebase, pasted as text). Without it the APK still builds.
+      - name: Firebase config
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+            python3 -c "import json; j=json.load(open('android/app/google-services.json')); print('::notice title=Firebase::project', j['project_info']['project_id'])"
+          else
+            echo "::warning title=Firebase::GOOGLE_SERVICES_JSON secret not set: notifications fall back to a check every ~15 minutes"
+          fi
+
       - name: Build the APK
         env:
           SITE_URL: ${{ vars.SITE_URL }}
@@ -49,6 +62,8 @@ jobs:
           SIZE=$(stat -c %s out/yael-summit.apk)
           echo "::notice title=APK OK::size=${SIZE} bytes | ${INFO} | ${SIGNER}"
           unzip -p out/yael-summit.apk classes.dex | strings | grep -m1 -o "https://[a-z0-9.-]*workers.dev" | sed 's/^/::notice title=Site URL::/'
+          "$BT/aapt2" dump xmltree out/yael-summit.apk --file AndroidManifest.xml | grep -q "FcmService" && echo "::notice title=FCM::FcmService in manifest"
+          "$BT/aapt2" dump resources out/yael-summit.apk | grep -q "string/google_app_id" && echo "::notice title=FCM::Firebase config built in" || echo "::warning title=FCM::No Firebase config in this APK"
 
       - uses: actions/upload-artifact@v4
         with:

@@ -32,10 +32,11 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Phone notifications for the Android app. About every 15 minutes (Android decides the exact
- * timing to save battery) the app asks the site what's new for the signed-in principal
+ * Phone notifications for the Android app: asks the site what's new for the signed-in principal
  * (/api/notifications) and shows each new item: connection requests, accepted connections,
- * messages and replies on the board. No third-party push service is involved.
+ * messages and replies on the board.
+ * It runs the moment Firebase wakes the app (FcmService), and also about every 15 minutes as a
+ * fallback (Android decides the exact timing to save battery, and may delay it for hours).
  */
 public class NotifyJob extends JobService {
     private static final int JOB_ID = 7701;
@@ -92,7 +93,8 @@ public class NotifyJob extends JobService {
         return out[0];
     }
 
-    static void check(Context ctx) throws Exception {
+    /** Shows what's new since the last check. Called by the periodic job and by FcmService. */
+    static synchronized void check(Context ctx) throws Exception {
         String cookie = cookie();
         if (cookie == null || !cookie.contains("ys=")) return;   // not signed in
         SharedPreferences prefs = ctx.getSharedPreferences("notify", MODE_PRIVATE);
@@ -112,14 +114,15 @@ public class NotifyJob extends JobService {
             res = new JSONObject(buf.toString("UTF-8"));
         }
         long latest = res.optLong("latest", 0);
-        if (last < 0) { prefs.edit().putLong("last", latest).apply(); return; } // first run: start from now
+        // First run on this phone: only what happened in the last 15 minutes, not the whole history.
+        long since = last < 0 ? System.currentTimeMillis() - 15 * 60 * 1000L : 0;
         JSONArray list = res.optJSONArray("notifications");
         if (list != null && !appOnScreen && allowed(ctx)) {
             createChannel(ctx);
             NotificationManager nm = ctx.getSystemService(NotificationManager.class);
             for (int i = list.length() - 1; i >= 0; i--) {   // oldest first
                 JSONObject n = list.getJSONObject(i);
-                if (n.optLong("id") <= last) continue;
+                if (n.optLong("id") <= last || n.optLong("created_at") < since) continue;
                 nm.notify((int) n.optLong("id"), build(ctx, n));
             }
         }

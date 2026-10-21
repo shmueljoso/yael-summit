@@ -8,6 +8,23 @@ if (!siteUrl.startsWith('https://')) {
 }
 def siteHost = new URI(siteUrl).host
 
+// Firebase Cloud Messaging (instant notifications): read from app/google-services.json, which the
+// GitHub build writes from the GOOGLE_SERVICES_JSON secret. Without the file the app still builds
+// and checks for notifications every ~15 minutes by itself.
+def firebase = [:]
+def gsFile = file('google-services.json')
+if (gsFile.exists()) {
+    def gs = new groovy.json.JsonSlurper().parse(gsFile)
+    def client = gs.client.find { it.client_info?.android_client_info?.package_name == 'org.yaelfoundation.summit' }
+    if (client == null) throw new GradleException("google-services.json has no Android app named org.yaelfoundation.summit")
+    firebase = [
+        appId: client.client_info.mobilesdk_app_id,
+        apiKey: client.api_key[0].current_key,
+        senderId: gs.project_info.project_number,
+        projectId: gs.project_info.project_id,
+    ]
+}
+
 android {
     namespace 'org.yaelfoundation.summit'
     compileSdk 35
@@ -21,6 +38,14 @@ android {
         buildConfigField 'String', 'SITE_URL', "\"${siteUrl}\""
         buildConfigField 'String', 'SITE_HOST', "\"${siteHost}\""
         manifestPlaceholders = [siteHost: siteHost]
+        buildConfigField 'boolean', 'HAS_FCM', firebase ? 'true' : 'false'
+        if (firebase) {
+            // The same resources the Google Services plugin would make; Firebase starts itself from them.
+            resValue 'string', 'google_app_id', firebase.appId
+            resValue 'string', 'google_api_key', firebase.apiKey
+            resValue 'string', 'gcm_defaultSenderId', firebase.senderId
+            resValue 'string', 'project_id', firebase.projectId
+        }
     }
 
     signingConfigs {
@@ -50,4 +75,8 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+}
+
+dependencies {
+    implementation 'com.google.firebase:firebase-messaging:24.1.0'
 }
