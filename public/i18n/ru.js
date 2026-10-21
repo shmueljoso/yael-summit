@@ -135,7 +135,7 @@ export default {
   "Add a few lines about you and your school in": "Добавьте пару строк о себе и своей школе в разделе",
   "No bio yet.": "Пока нет описания.",
   "Working on": "Работает над",
-  "Strong in, happy to help": "Силён в этом и рад помочь",
+  "Strong in, happy to help": "Сильные стороны и готовность помочь",
   "Wants to learn": "Хочет научиться",
   "On the board": "На доске",
   "No posts yet.": "Пока нет публикаций.",

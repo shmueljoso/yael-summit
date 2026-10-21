@@ -135,7 +135,7 @@ export default {
   "Add a few lines about you and your school in": "Додайте кілька рядків про себе і свою школу в розділі",
   "No bio yet.": "Поки немає опису.",
   "Working on": "Працює над",
-  "Strong in, happy to help": "Сильний у цьому й радий допомогти",
+  "Strong in, happy to help": "Сильні сторони й готовність допомогти",
   "Wants to learn": "Хоче навчитися",
   "On the board": "На дошці",
   "No posts yet.": "Поки немає публікацій.",
