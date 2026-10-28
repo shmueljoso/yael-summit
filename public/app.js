@@ -74,6 +74,7 @@ async function api(method, path, body) {
     credentials: "same-origin",
   });
   const data = await res.json().catch(() => ({}));
+  if (method !== "GET") { mem.clear(); setTimeout(warmMainPages, 1500); }   // something changed: get fresh data ready
   if (!res.ok) {
     const err = new Error(data.message || "Something went wrong. Try again.");
     err.status = res.status; err.code = data.error;
@@ -82,6 +83,61 @@ async function api(method, path, body) {
   }
   return data;
 }
+
+// =============================================================
+// data ready before it's needed: pages open without waiting for the site
+// =============================================================
+// Answers to page loads are kept in memory for a short while. The main pages are fetched ahead
+// of time in the background, and a page's data starts loading the moment a finger touches its link.
+// Any change (posting, connecting, sending…) clears them, so nothing shown is out of date.
+const FRESH = 60e3;
+const mem = new Map();   // path → { at, p }
+function get(path, maxAge = FRESH) {
+  const hit = mem.get(path);
+  if (hit && Date.now() - hit.at < maxAge) return hit.p;
+  const p = api("GET", path);
+  mem.set(path, { at: Date.now(), p });
+  p.catch(() => mem.delete(path));
+  return p;
+}
+const warm = (path, maxAge = FRESH) => { get(path, maxAge).catch(() => {}); };
+/** The data each page needs, by address. */
+function pageData(hash) {
+  const h = hash.replace(/^#\/?/, "");
+  if (h === "") return ["/api/suggestions", "/api/connections"];
+  if (h === "board" || h.startsWith("board/")) return ["/api/board"];
+  if (h === "people") return ["/api/people?q=&topic="];
+  if (h === "map") return ["/api/map"];
+  if (h === "messages") return ["/api/messages"];
+  const u = h.match(/^(?:u|meet)\/([\w-]+)$/);
+  return u ? [`/api/people/${u[1]}`] : [];
+}
+/** Gets the main pages ready in the background (after opening, and again every so often). */
+function warmMainPages() {
+  if (!state.me || document.hidden) return;
+  for (const h of ["#/", "#/board", "#/messages", "#/people"]) pageData(h).forEach((path) => warm(path, 25e3));
+}
+/** The profiles on screen (and just below) are fetched quietly, so opening one is instant. */
+let warmTimer;
+function warmVisible() {
+  clearTimeout(warmTimer);
+  warmTimer = setTimeout(() => {
+    if (!state.me || document.hidden) return;
+    const seen = new Set(), H = innerHeight;
+    for (const a of $$('a[href^="#/u/"]', view)) {
+      const r = a.getBoundingClientRect(), href = a.getAttribute("href");
+      if (r.height && r.bottom > 0 && r.top < H * 1.5 && !seen.has(href)) { seen.add(href); pageData(href).forEach((path) => warm(path)); }
+      if (seen.size >= 8) break;
+    }
+  }, 700);
+}
+addEventListener("scroll", warmVisible, { passive: true });
+new MutationObserver(warmVisible).observe(view, { childList: true, subtree: true });
+// A finger on a link: start loading that page now, before the tap even ends.
+addEventListener("pointerdown", (e) => {
+  const a = e.target.closest?.('a[href^="#/"]');
+  if (a && state.me) pageData(a.getAttribute("href")).forEach((path) => warm(path));
+}, { passive: true, capture: true });
 
 // Night (the summit's colors) or Day (light). Chosen per device; the maps stay night skies either way.
 const isDay = () => document.documentElement.dataset.theme === "day";
@@ -281,7 +337,7 @@ async function syncLang() {
     state.me.lang = LANG; state.topics = r.taxonomy.topics; state.levels = r.taxonomy.levels;
   } catch { /* try again next time */ }
 }
-setInterval(() => { if (state.me && !document.hidden) refreshMe().catch(() => {}); }, 45000);
+setInterval(() => { if (state.me && !document.hidden) { refreshMe().catch(() => {}); warmMainPages(); } }, 45000);
 
 // =============================================================
 // canvases: night sky, profile cover, constellation map
@@ -458,7 +514,7 @@ function landing(mode) {
     btn.disabled = true; err.textContent = "";
     try {
       await api("POST", join ? "/api/auth/signup" : "/api/auth/login", { ...f, lang: LANG });
-      await refreshMe();
+      await refreshMe(); setTimeout(warmMainPages, 800);
       const after = takeAfter();
       go(after || (join ? "#/me/edit" : "#/"));
       if (join) toast(after ? "Welcome! You can finish your profile anytime in Edit profile." : "Welcome! Start by choosing your school.");
@@ -472,7 +528,7 @@ function landing(mode) {
 async function home() {
   const me = state.me;
   const ok = await load(async () => {
-    const [sug, cons] = await Promise.all([api("GET", "/api/suggestions"), api("GET", "/api/connections")]);
+    const [sug, cons] = await Promise.all([get("/api/suggestions"), get("/api/connections")]);
     const reqs = cons.received;
     return `
     <div class="wrap">
@@ -575,7 +631,7 @@ function people(mode) {
   const everyone = () => !q && !topic;
   async function refresh() {
     try {
-      const data = await api("GET", `/api/people?${new URLSearchParams({ q, topic })}`);
+      const data = await get(`/api/people?${new URLSearchParams({ q, topic })}`);
       if (everyone()) keep("/api/people", data);
       if (token === routeToken) show(data);
     } catch (e) { body.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
@@ -635,7 +691,7 @@ function mapControls(box, nodes) {
 async function constellationMap(onFilterReady) {
   const token = routeToken, body = $("#pbody");
   let data;
-  try { data = await api("GET", "/api/map"); } catch (e) { body.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  try { data = await get("/api/map"); } catch (e) { body.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
   if (token !== routeToken) return;
   const joined = data.nodes.filter((n) => !n.waiting).length, waiting = data.nodes.length - joined;
   body.innerHTML = `<div class="map-wrap"><canvas id="mapCv" role="img" aria-label="Map of the schools in the network, the principals who joined, and their connections"></canvas>
@@ -727,7 +783,7 @@ const LINK_NAMES = { linkedin: "LinkedIn", facebook: "Facebook", instagram: "Ins
 async function profile(id) {
   let data;
   const ok = await load(async () => {
-    data = await api("GET", `/api/people/${id}`);
+    data = await get(`/api/people/${id}`);
     const p = data.profile, self = p.connection === "self", open = self || p.connection === "connected";
     const chipRow = (arr, cls = "") => (arr.length ? `<div class="chips">${arr.map((t) => `<span class="chip ${cls}">${esc(topicLabel(t))}</span>`).join("")}</div>` : `<p class="tiny">Not filled in yet.</p>`);
     const links = Object.entries(p.links || {});
@@ -944,14 +1000,14 @@ async function messages(withId) {
   };
   const known = recall("/api/messages");
   if (known) $("#convList").innerHTML = listHTML(known.conversations, known.connected);
-  async function loadList() {
-    const { conversations } = await api("GET", "/api/messages");
+  async function loadList(fresh) {
+    const { conversations } = await (fresh ? api("GET", "/api/messages") : get("/api/messages"));
     const connected = conversations.length ? null : (await api("GET", "/api/connections")).connected;
     keep("/api/messages", { conversations, connected });
     if (token === routeToken) $("#convList").innerHTML = listHTML(conversations, connected);
   }
   loadList().catch((e) => { if (token === routeToken && !known) $("#convList").innerHTML = `<div class="empty">${esc(e.message)}</div>`; });
-  const listTimer = setInterval(() => { if (!document.hidden) loadList().catch(() => {}); }, 20000);
+  const listTimer = setInterval(() => { if (!document.hidden) loadList(true).catch(() => {}); }, 20000);
   onLeave(() => clearInterval(listTimer));
 
   if (!withId) return;
@@ -1005,7 +1061,7 @@ async function messages(withId) {
       const { message } = await api("POST", path, { body });
       const el = $(`[data-pending="${id}"]`, box);
       if (el) el.outerHTML = bubble(message); else if (message.id > lastId) box.insertAdjacentHTML("beforeend", bubble(message));
-      loadList().catch(() => {});
+      loadList(true).catch(() => {});
     } catch (err) {
       $(`[data-pending="${id}"]`, box)?.remove();
       if (!input.value) input.value = body;
@@ -1017,6 +1073,7 @@ async function messages(withId) {
     const d = await api("GET", path);
     if (token !== routeToken) return;
     keep(path, { with: d.with, messages: d.messages.slice(-60) });
+    mem.delete("/api/messages");   // these are read now: the list's unread count changed
     const near = !seen || box.scrollHeight - box.scrollTop - box.clientHeight < 80;
     paint(d); if (near) toBottom();
   } catch (e) {
@@ -1044,7 +1101,7 @@ const fromLang = (code) => t("Translated from {lang}", { lang: langName(code) ||
 async function board(focus) {
   let data;
   const ok = await load(async () => {
-    data = await api("GET", "/api/board");
+    data = await get("/api/board");
     return `
     <div class="wrap section">
       <div class="section-head"><div><p class="label">The board</p><h2>Ask the whole constellation</h2></div></div>
@@ -1496,7 +1553,7 @@ async function meetThem(id) {
   if (id === state.me.id) { go("#/meet"); return; }
   let p;
   const ok = await load(async () => {
-    p = (await api("GET", `/api/people/${id}`)).profile;
+    p = (await get(`/api/people/${id}`)).profile;
     const already = p.connection === "connected";
     return `
     <div class="wrap section meet fade-in">
@@ -1889,12 +1946,12 @@ function summit() {
   const boot = store.get("boot");
   if (boot?.me) {
     // Seen before on this phone: open at once on the remembered account and pages, then catch up.
-    applyMe(boot); renderChrome(); route(); appReady();
+    applyMe(boot); renderChrome(); route(); appReady(); setTimeout(warmMainPages, 800);
     refreshMe(me).then(() => { if (!state.me) go("#/signin"); }).catch(() => {});
   } else {
     view.innerHTML = loadingHTML;
     try { await refreshMe(me); } catch { state.me = null; }
-    route(); appReady();
+    route(); appReady(); setTimeout(warmMainPages, 800);
   }
 })();
 
