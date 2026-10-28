@@ -563,8 +563,8 @@ button.chip:hover { color: var(--text); border-color: var(--text-3); }
 .loading { padding: 60px 0; display: grid; place-items: center; color: var(--text-2); }
 .spinner { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--accent); animation: spin .9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.fade-in { animation: fade .5s var(--ease) both; }
-@keyframes fade { from { opacity: .2; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.fade-in { animation: fade .18s var(--ease) both; }
+@keyframes fade { from { opacity: .4; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .note-dialog { color: inherit; width: calc(100% - 32px); max-width: 460px; background: var(--surface-solid); }
 .note-dialog::backdrop { background: var(--scrim); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 .note-dialog h2 { letter-spacing: -.02em; }
