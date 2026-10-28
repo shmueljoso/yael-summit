@@ -20,5 +20,7 @@
   "vars": {
     "GEMINI_MODEL": "gemini-3.5-flash-lite"
   },
+  // Runs the Worker next to the database, so pages that ask it several things answer sooner.
+  "placement": { "mode": "smart" },
   "observability": { "enabled": true }
 }

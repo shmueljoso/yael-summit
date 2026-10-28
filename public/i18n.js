@@ -95,8 +95,8 @@ function start() {
   html.lang = LANG; html.dir = LANG === "he" ? "rtl" : "ltr";
   if (LANG === "en") return;
   // Hebrew and Cyrillic letters, in fonts that sit well next to the site's own.
-  const fonts = { he: "Frank+Ruhl+Libre:wght@500;700;900&family=Heebo:wght@400;500;600;700", ru: "Playfair+Display:wght@600;800&family=Inter:wght@400;500;600;700", uk: "Playfair+Display:wght@600;800&family=Inter:wght@400;500;600;700" }[LANG];
-  if (fonts) { const l = document.createElement("link"); l.rel = "stylesheet"; l.href = `https://fonts.googleapis.com/css2?family=${fonts}&display=swap`; document.head.appendChild(l); }
+  const fonts = { he: "hebrew", ru: "cyrillic", uk: "cyrillic" }[LANG];
+  if (fonts) { const l = document.createElement("link"); l.rel = "stylesheet"; l.href = `fonts/${fonts}.css`; document.head.appendChild(l); }
   walk(document.body);
   new MutationObserver((list) => {
     for (const m of list) {

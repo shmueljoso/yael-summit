@@ -736,3 +736,28 @@ details.tiny .viz-table { margin-top: 8px; }
   body:not(.signed-in) .nav-end .btn-sm { padding-inline: 12px; }
 }
 .sugg .chip, .prof-body .chip { white-space: normal; max-width: 100%; }
+
+/* ---------- feels like an app ---------- */
+html { -webkit-tap-highlight-color: transparent; }
+body { overscroll-behavior-y: none; }
+a, button, label, summary, .chip, select { touch-action: manipulation; }
+.btn, .chip, .tabbar, .nav, .seg, .label, .badge, .me-btn, .theme-btn { -webkit-user-select: none; user-select: none; }
+img { -webkit-user-drag: none; }
+/* Pressed: things give way under the finger, as in native apps. */
+.btn, .chip, .conv, .person, .mini, .meet-card, .tabbar a, .me-btn, .compose-open, .reply-btn { transition: transform .12s var(--ease), background-color .2s, border-color .2s, color .2s, opacity .2s; }
+.btn:active:not(:disabled), .chip:active:not(:disabled), .me-btn:active, .compose-open:active { transform: scale(.96); }
+.conv:active, .person:active, .mini:active, .meet-card:active { transform: scale(.985); }
+.tabbar a:active { transform: scale(.92); }
+@media (prefers-reduced-motion: reduce) { .btn, .chip, .conv, .person, .mini, .meet-card, .tabbar a, .me-btn, .compose-open, .reply-btn { transition: none; } }
+
+/* A page opened from memory appears at once (no fade), and a thin bar shows it's being refreshed. */
+.view.instant .fade-in { animation: none; }
+body.refreshing::after {
+  content: ""; position: fixed; inset-inline: 0; top: var(--top-h); height: 2px; z-index: 60; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent); background-size: 40% 100%; background-repeat: no-repeat;
+  animation: refreshing 1s linear infinite;
+}
+@keyframes refreshing { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+[inert] { cursor: progress; }
+/* A message on its way */
+.bubble.pending { opacity: .6; }

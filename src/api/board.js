@@ -60,7 +60,7 @@ export async function listPosts({ request, env, waitUntil }) {
 }
 
 /** POST /api/board { kind, text } */
-export async function createPost({ request, env }) {
+export async function createPost({ request, env, waitUntil }) {
   const u = await requireUser(env, request);
   if (await limited(env, `post:${u.id}`, 3)) return error(429, "slow_down", "You've posted a few times in a row. Try again in a minute.");
   const b = await readJson(request);
@@ -68,13 +68,16 @@ export async function createPost({ request, env }) {
   if (text.length < 3) return error(400, "empty", "Write a few words first.");
   const d = await db(env);
   const post = { id: randomId(8), kind: KINDS.has(b.kind) ? b.kind : "question" };
-  const w = await written(env, d, `p:${post.id}`, text);
-  Object.assign(post, { text: w.text, original: w.original, lang: w.lang });
   const now = Date.now();
-  await d.prepare("INSERT INTO posts (id, user_id, kind, text, original, lang, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-    .bind(post.id, u.id, post.kind, post.text, post.original, post.lang, now).run();
+  // Posted at once, as written; translated into every language right after, in the background.
+  await d.prepare("INSERT INTO posts (id, user_id, kind, text, original, lang, created_at) VALUES (?, ?, ?, ?, NULL, 'und', ?)")
+    .bind(post.id, u.id, post.kind, text, now).run();
+  waitUntil((async () => {
+    const w = await written(env, d, `p:${post.id}`, text);
+    if (w.lang !== "und") await d.prepare("UPDATE posts SET text = ?, original = ?, lang = ? WHERE id = ?").bind(w.text, w.original, w.lang, post.id).run();
+  })().catch(() => {}));
   // The writer sees their post as written.
-  return json({ post: { id: post.id, kind: post.kind, text, original: null, lang: post.lang, translated: post.lang !== "und", at: now, replies: 0, author: card(u) } }, 201);
+  return json({ post: { id: post.id, kind: post.kind, text, original: null, lang: "und", at: now, replies: 0, author: card(u) } }, 201);
 }
 
 /** POST /api/board/:id/report { reason } — flag a post for the foundation team. */
@@ -149,11 +152,22 @@ export async function addComment({ request, env, params, waitUntil }) {
   const post = await d.prepare("SELECT p.*, a.full_name AS author_name FROM posts p JOIN users a ON a.id = p.user_id WHERE p.id = ?").bind(params.id).first();
   if (!post) return error(404, "not_found", "This post was removed.");
   const id = randomId(8);
-  const w = await written(env, d, `c:${id}`, raw);
   const now = Date.now();
-  await d.prepare("INSERT INTO comments (id, post_id, user_id, text, original, lang, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-    .bind(id, post.id, u.id, w.text, w.original, w.lang, now).run();
+  // Replied at once, as written. The translation, and telling everyone in the conversation
+  // (each in their own language), happen right after, in the background.
+  await d.prepare("INSERT INTO comments (id, post_id, user_id, text, original, lang, created_at) VALUES (?, ?, ?, ?, NULL, 'und', ?)")
+    .bind(id, post.id, u.id, raw, now).run();
+  waitUntil((async () => {
+    const w = await written(env, d, `c:${id}`, raw);
+    if (w.lang !== "und") await d.prepare("UPDATE comments SET text = ?, original = ?, lang = ? WHERE id = ?").bind(w.text, w.original, w.lang, id).run();
+    await tellConversation(env, request, d, waitUntil, u, post, raw, w);
+  })().catch(() => {}));
+  // The writer sees their reply as written.
+  return json({ comment: { id, text: raw, original: null, lang: "und", at: now, author: card(u) } }, 201);
+}
 
+/** Tells the post's author and everyone who replied (except the writer) about a new reply, each in their language. */
+async function tellConversation(env, request, d, waitUntil, u, post, raw, w) {
   // Who is in this conversation: the post's author and everyone who replied, except the writer.
   const { results: people } = await d.prepare(
     "SELECT * FROM users WHERE id != ?2 AND (id = ?1 OR id IN (SELECT user_id FROM comments WHERE post_id = ?3))"
@@ -182,8 +196,6 @@ export async function addComment({ request, env, params, waitUntil }) {
       }
     }
   }
-  // The writer sees their reply as written.
-  return json({ comment: { id, text: raw, original: null, lang: w.lang, at: now, author: card(u) } }, 201);
 }
 
 /** DELETE /api/board/comments/:id — your own reply, or any reply for the foundation team. */

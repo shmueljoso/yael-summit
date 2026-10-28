@@ -80,12 +80,27 @@ const MIGRATIONS = [
   "ALTER TABLE messages ADD COLUMN lang TEXT DEFAULT ''",
 ];
 
+// Changes whenever the tables, migrations or the school list change.
+const SCHEMA_VERSION = (() => {
+  let h = 2166136261;
+  for (const c of SCHEMA.join("\n") + MIGRATIONS.join("\n") + JSON.stringify(SCHOOLS)) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  return (h >>> 0).toString(36);
+})();
+
+/**
+ * Makes sure the tables exist. A fresh Worker copy (which Cloudflare starts often) used to run every
+ * CREATE and ALTER one after the other, a dozen trips to the database before answering. Now it asks
+ * once whether this version is already set up, and does the work only when something changed.
+ */
 async function prepare(env) {
   const d = env.DB;
+  const row = await d.prepare("SELECT v FROM meta WHERE k = 'schema'").first().catch(() => null);
+  if (row?.v === SCHEMA_VERSION) return;
   await d.batch(SCHEMA.map((q) => d.prepare(q)));
   for (const q of MIGRATIONS) { try { await d.prepare(q).run(); } catch { /* already applied */ } }
   await removeSampleContent(d);
   await syncSchools(d);
+  await d.prepare("INSERT INTO meta (k, v) VALUES ('schema', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind(SCHEMA_VERSION).run();
 }
 
 /** The early demo had fictional principals (is_demo = 1). Remove them and everything they touched. */
