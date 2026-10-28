@@ -53,6 +53,8 @@ public class MainActivity extends Activity {
     private PermissionRequest pendingCamera;   // the scanner asked for the camera; waiting for the user
     private String sharingUrl;                 // the meet link offered by NFC while "Meet in person" is open
     private boolean resumed;
+    private volatile boolean pageReady;        // the site said it has drawn its first screen
+    private long createdAt;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -66,6 +68,7 @@ public class MainActivity extends Activity {
         root.addView(web, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         setContentView(root);
         keepClearOfSystemBars(root);
+        holdUntilDrawn(root);
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -74,6 +77,7 @@ public class MainActivity extends Activity {
         s.setMediaPlaybackRequiresUserGesture(true);
         s.setAllowFileAccess(false);
         s.setSupportMultipleWindows(false);       // target=_blank opens in place
+        s.setOffscreenPreRaster(true);           // draw the whole page ahead, so scrolling never shows blank areas
         s.setUserAgentString(s.getUserAgentString() + " YaelSummitApp/" + BuildConfig.VERSION_NAME);
 
         CookieManager cookies = CookieManager.getInstance();
@@ -84,7 +88,7 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new Client());
         web.setWebChromeClient(new Chrome());
 
-        if (state != null) web.restoreState(state);
+        if (state != null) { web.restoreState(state); pageReady = true; }
         else web.loadUrl(startUrl(getIntent()));
         addShortcuts();
         NotifyJob.createChannel(this);
@@ -95,6 +99,24 @@ public class MainActivity extends Activity {
                     getSharedPreferences("notify", MODE_PRIVATE).edit().putString("fcm", token).apply());
             } catch (Exception ignored) { /* Google Play services missing: the periodic check still works */ }
         }
+    }
+
+    /**
+     * Keeps the opening screen (the icon on the night sky) until the site has drawn its first
+     * screen, instead of showing an empty page while it loads. Never longer than 2.5 seconds.
+     */
+    private void holdUntilDrawn(View root) {
+        createdAt = android.os.SystemClock.uptimeMillis();
+        root.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+            @Override
+            public boolean onPreDraw() {
+                if (pageReady || android.os.SystemClock.uptimeMillis() - createdAt > 2500) {
+                    root.getViewTreeObserver().removeOnPreDrawListener(this);
+                    return true;
+                }
+                return false;
+            }
+        });
     }
 
     /** Long-press the app icon: "My code" and "Scan a code". */
@@ -221,6 +243,17 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String version() { return BuildConfig.VERSION_NAME; }
+
+        /** The site has drawn its first screen: the opening screen can go. */
+        @JavascriptInterface
+        public void ready() { pageReady = true; runOnUiThread(() -> web.invalidate()); }
+
+        /** A light tap felt in the hand: something was sent, accepted or posted. */
+        @JavascriptInterface
+        public void haptic() {
+            runOnUiThread(() -> web.performHapticFeedback(Build.VERSION.SDK_INT >= 30
+                ? android.view.HapticFeedbackConstants.CONFIRM : android.view.HapticFeedbackConstants.VIRTUAL_KEY));
+        }
 
         /** The phone's share sheet (WhatsApp, email, …). */
         @JavascriptInterface

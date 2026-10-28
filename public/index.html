@@ -14,10 +14,13 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Yael Summit">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500..800;1,9..144,500..700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@500&display=swap">
+<link rel="preload" href="fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/fraunces-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="styles.css">
+<link rel="modulepreload" href="app.js">
+<link rel="modulepreload" href="i18n.js">
+<script>/* Start fetching this visitor's language with the code, not after it. */try{var L=["es","fr","ru","he","de","pt","uk"],l=localStorage.getItem("lang")||localStorage.getItem("langAuto");if(!l)for(var x of navigator.languages||[]){x=String(x).slice(0,2);if(L.indexOf(x)>=0||x==="en"){l=x;break}}if(L.indexOf(l)>=0){var m=document.createElement("link");m.rel="modulepreload";m.href="i18n/"+l+".js";document.head.appendChild(m);if(l==="he"){document.documentElement.dir="rtl";document.documentElement.lang="he"}}}catch(e){}</script>
 </head>
 <body>
   <header class="topbar" id="topbar">

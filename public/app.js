@@ -77,7 +77,7 @@ async function api(method, path, body) {
   if (!res.ok) {
     const err = new Error(data.message || "Something went wrong. Try again.");
     err.status = res.status; err.code = data.error;
-    if (res.status === 401 && state.me) { state.me = null; renderChrome(); go("#/signin"); }
+    if (res.status === 401 && state.me) { state.me = null; store.clear(); renderChrome(); go("#/signin"); }
     throw err;
   }
   return data;
@@ -148,6 +148,7 @@ function takeAfter() { try { const a = sessionStorage.getItem("after"); sessionS
 function route() {
   while (cleanups.length) { try { cleanups.pop()(); } catch { /* ignore */ } }
   routeToken++;
+  view.classList.remove("instant"); document.body.classList.remove("refreshing");
   const path = location.hash.replace(/^#\/?/, "");
   for (const [re, fn] of ROUTES) {
     const m = path.match(re);
@@ -158,17 +159,49 @@ function route() {
 addEventListener("hashchange", route);
 
 const loadingHTML = '<div class="loading"><div class="spinner" aria-label="Loading"></div></div>';
-/** Renders a loading state, runs the loader, and ignores its result if the user already navigated away. */
+
+// =============================================================
+// remembered pages: the app opens on what you saw last time, then refreshes it
+// =============================================================
+// Kept on this device only, per account, and cleared on sign-out.
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* full or unavailable: just don't remember */ } },
+  clear() { try { for (const k of Object.keys(localStorage)) if (/^(boot|snap:|data:)/.test(k)) localStorage.removeItem(k); } catch { /* ignore */ } },
+};
+const snapKey = () => (state.me ? `snap:${state.me.id}:${location.hash || "#/"}` : null);
+function remember(key, html) {
+  if (!key || html.length > 250000) return;
+  store.set(key, html);
+  // keep the dozen most recent pages
+  const list = (store.get("snap:list") || []).filter((k) => k !== key).concat(key);
+  for (const k of list.splice(0, Math.max(0, list.length - 12))) try { localStorage.removeItem(k); } catch { /* ignore */ }
+  store.set("snap:list", list);
+}
+/** A remembered API answer for this account (null if none), and a way to save the new one. */
+const dataKey = (path) => (state.me ? `data:${state.me.id}:${path}` : null);
+const recall = (path) => (dataKey(path) ? store.get(dataKey(path)) : null);
+const keep = (path, data) => { const k = dataKey(path); if (k) store.set(k, data); };
+
+/**
+ * Shows the page: at once from the last time if it was seen before (inert for the moment it takes
+ * to refresh), otherwise a spinner; then the fresh version. Ignores the result if the user already moved on.
+ */
 async function load(fn) {
-  const token = routeToken;
-  view.innerHTML = loadingHTML;
+  const token = routeToken, key = snapKey(), last = key && store.get(key);
+  view.classList.toggle("instant", !!last);
+  if (last) { view.innerHTML = last; view.firstElementChild?.setAttribute("inert", ""); document.body.classList.add("refreshing"); }
+  else view.innerHTML = loadingHTML;
   try {
     const html = await fn();
-    if (token === routeToken && typeof html === "string") view.innerHTML = html;
+    if (token === routeToken && typeof html === "string") { view.innerHTML = html; remember(key, html); }
     return token === routeToken;
   } catch (e) {
+    if (last && token === routeToken) { view.firstElementChild?.removeAttribute("inert"); toast(e.message); return false; }
     if (token === routeToken) view.innerHTML = `<div class="wrap section"><div class="empty"><b>That didn't load.</b><span>${esc(e.message)}</span><button class="btn btn-soft btn-sm" onclick="location.reload()">Reload</button></div></div>`;
     return false;
+  } finally {
+    if (token === routeToken) document.body.classList.remove("refreshing");
   }
 }
 
@@ -216,17 +249,23 @@ function renderChrome() {
     const btn = $("#meBtn"), menu = $("#meMenu");
     btn.onclick = (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; btn.setAttribute("aria-expanded", String(!menu.hidden)); };
     menu.onclick = () => (menu.hidden = true);
-    $("#signOut").onclick = async () => { await pushOff().catch(() => {}); await api("POST", "/api/auth/logout").catch(() => {}); state.me = null; langSynced = false; renderChrome(); go("#/signin"); toast("Signed out."); };
+    $("#signOut").onclick = async () => { await pushOff().catch(() => {}); await api("POST", "/api/auth/logout").catch(() => {}); state.me = null; langSynced = false; store.clear(); renderChrome(); go("#/signin"); toast("Signed out."); };
   }
 }
 document.addEventListener("click", () => { const m = $("#meMenu"); if (m) m.hidden = true; });
 
-async function refreshMe() {
-  const data = await api("GET", "/api/me");
+function applyMe(data) {
   state.me = data.me; state.admin = !!data.admin;
   if (data.counts) state.counts = data.counts;
   if (data.taxonomy) { state.topics = data.taxonomy.topics; state.levels = data.taxonomy.levels; }
+}
+async function refreshMe(pending) {
+  const data = await (pending || api("GET", "/api/me"));
+  const was = state.me?.id;
+  applyMe(data);
+  if (!data.me || (was && was !== data.me.id)) store.clear();
   await syncLang();
+  if (state.me) store.set("boot", { me: state.me, admin: state.admin, counts: state.counts, taxonomy: { topics: state.topics, levels: state.levels } });
   appPushSync();
   renderChrome();
 }
@@ -352,9 +391,10 @@ function wireConnect(root, after) {
         if (note === null) return;
         b.disabled = true;
         const r = await api("POST", "/api/connections", { to: id, note });
+        haptic();
         toast(r.connection === "connected" ? "You're connected." : "Request sent.");
       } else if (act === "accept") {
-        b.disabled = true; await api("POST", `/api/connections/${id}/accept`); toast("You're connected. Say hello!");
+        b.disabled = true; await api("POST", `/api/connections/${id}/accept`); haptic(); toast("You're connected. Say hello!");
       } else {
         b.disabled = true; await api("DELETE", `/api/connections/${id}`); toast(act === "decline" ? "Request declined." : "Request cancelled.");
       }
@@ -531,19 +571,26 @@ function people(mode) {
   }
 
   const token = routeToken, body = $("#pbody");
+  // Everyone (no search, no filter) opens at once from last time, then refreshes.
+  const everyone = () => !q && !topic;
   async function refresh() {
     try {
-      const { people, schools } = await api("GET", `/api/people?${new URLSearchParams({ q, topic })}`);
-      if (token !== routeToken) return;
-      const waiting = schools.length ? `<div class="section-head" style="margin-top:28px"><h2 style="font-size:1.5rem">Schools not on the network yet</h2><span class="tiny">${t(schools.length === 1 ? "1 school · its principal hasn't joined yet" : "{n} schools · their principals haven't joined yet", { n: schools.length })}</span></div>
-        <div class="cards">${schools.map((x) => `<div class="person waiting">${avatar({ id: x.id, full_name: x.name }, "lg")}<span class="who"><b>${esc(x.name)}</b><span>${esc(state.levels[x.level] || "")}</span><span>${esc(place(x))}</span></span></div>`).join("")}</div>` : "";
-      body.innerHTML = (people.length
-        ? `<div class="cards">${people.map((p) => `<a class="person" href="#/u/${esc(p.id)}">${avatar(p, "lg")}<span class="who"><b>${esc(p.full_name)}</b><span>${esc(p.role_title || "Principal")}</span><span>${esc(where(p))}</span></span>${p.connection ? `<span class="state ${p.connection}">${{ connected: "Connected", sent: "Requested", received: "Wants to connect" }[p.connection]}</span>` : ""}</a>`).join("")}</div>`
-        : `<div class="empty"><span>${q || topic ? "No principals match that yet." : "No other principals have joined yet."}</span></div>`) + waiting;
+      const data = await api("GET", `/api/people?${new URLSearchParams({ q, topic })}`);
+      if (everyone()) keep("/api/people", data);
+      if (token === routeToken) show(data);
     } catch (e) { body.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  }
+  function show({ people, schools }) {
+    const waiting = schools.length ? `<div class="section-head" style="margin-top:28px"><h2 style="font-size:1.5rem">Schools not on the network yet</h2><span class="tiny">${t(schools.length === 1 ? "1 school · its principal hasn't joined yet" : "{n} schools · their principals haven't joined yet", { n: schools.length })}</span></div>
+      <div class="cards">${schools.map((x) => `<div class="person waiting">${avatar({ id: x.id, full_name: x.name }, "lg")}<span class="who"><b>${esc(x.name)}</b><span>${esc(state.levels[x.level] || "")}</span><span>${esc(place(x))}</span></span></div>`).join("")}</div>` : "";
+    body.innerHTML = (people.length
+      ? `<div class="cards">${people.map((p) => `<a class="person" href="#/u/${esc(p.id)}">${avatar(p, "lg")}<span class="who"><b>${esc(p.full_name)}</b><span>${esc(p.role_title || "Principal")}</span><span>${esc(where(p))}</span></span>${p.connection ? `<span class="state ${p.connection}">${{ connected: "Connected", sent: "Requested", received: "Wants to connect" }[p.connection]}</span>` : ""}</a>`).join("")}</div>`
+      : `<div class="empty"><span>${q || topic ? "No principals match that yet." : "No other principals have joined yet."}</span></div>`) + waiting;
   }
   let qt; $("#pq").oninput = (e) => { clearTimeout(qt); qt = setTimeout(() => { q = e.target.value.trim(); refresh(); }, 250); };
   $("#ptopics").onclick = (e) => pickTopic(e, refresh);
+  const seen = recall("/api/people");
+  if (seen) show(seen);
   refresh();
 }
 
@@ -889,20 +936,21 @@ async function messages(withId) {
   const token = routeToken;
   view.innerHTML = `<div class="wrap"><div class="inbox ${withId ? "has-thread" : ""}"><div class="list" id="convList">${loadingHTML}</div><div class="thread" id="thread">${withId ? loadingHTML : `<div class="empty" style="margin:auto;text-align:center;justify-items:center">${icon("chat")}<span>Choose a conversation, or message one of your connections from their profile.</span></div>`}</div></div></div>`;
 
+  const listHTML = (conversations, connected) => {
+    if (conversations.length) return conversations.map((c) => `<a class="conv" href="#/messages/${esc(c.with.id)}" ${c.with.id === withId ? 'aria-current="true"' : ""}>${avatar(c.with, "sm")}<span class="who"><b>${esc(c.with.full_name)}</b><span>${c.last.mine ? `${t("You:")} ` : ""}<span translate="no">${esc(c.last.body)}</span></span></span>${c.unread ? `<span class="dot">${c.unread}</span>` : `<span class="tiny">${ago(c.last.at)}</span>`}</a>`).join("");
+    return connected?.length
+      ? `<p class="tiny" style="padding:10px">Start a conversation with one of your connections:</p>` + connected.map((p) => `<a class="conv" href="#/messages/${esc(p.id)}" ${p.id === withId ? 'aria-current="true"' : ""}>${avatar(p, "sm")}<span class="who"><b>${esc(p.full_name)}</b><span>${esc(where(p))}</span></span></a>`).join("")
+      : `<div class="empty" style="margin:8px"><span>Messages open once you're connected with someone.</span><a class="btn btn-soft btn-sm" href="#/">Find principals</a></div>`;
+  };
+  const known = recall("/api/messages");
+  if (known) $("#convList").innerHTML = listHTML(known.conversations, known.connected);
   async function loadList() {
     const { conversations } = await api("GET", "/api/messages");
-    if (token !== routeToken) return;
-    let html = conversations.map((c) => `<a class="conv" href="#/messages/${esc(c.with.id)}" ${c.with.id === withId ? 'aria-current="true"' : ""}>${avatar(c.with, "sm")}<span class="who"><b>${esc(c.with.full_name)}</b><span>${c.last.mine ? `${t("You:")} ` : ""}<span translate="no">${esc(c.last.body)}</span></span></span>${c.unread ? `<span class="dot">${c.unread}</span>` : `<span class="tiny">${ago(c.last.at)}</span>`}</a>`).join("");
-    if (!conversations.length) {
-      const { connected } = await api("GET", "/api/connections");
-      if (token !== routeToken) return;
-      html = connected.length
-        ? `<p class="tiny" style="padding:10px">Start a conversation with one of your connections:</p>` + connected.map((p) => `<a class="conv" href="#/messages/${esc(p.id)}" ${p.id === withId ? 'aria-current="true"' : ""}>${avatar(p, "sm")}<span class="who"><b>${esc(p.full_name)}</b><span>${esc(where(p))}</span></span></a>`).join("")
-        : `<div class="empty" style="margin:8px"><span>Messages open once you're connected with someone.</span><a class="btn btn-soft btn-sm" href="#/">Find principals</a></div>`;
-    }
-    $("#convList").innerHTML = html;
+    const connected = conversations.length ? null : (await api("GET", "/api/connections")).connected;
+    keep("/api/messages", { conversations, connected });
+    if (token === routeToken) $("#convList").innerHTML = listHTML(conversations, connected);
   }
-  loadList().catch((e) => { if (token === routeToken) $("#convList").innerHTML = `<div class="empty">${esc(e.message)}</div>`; });
+  loadList().catch((e) => { if (token === routeToken && !known) $("#convList").innerHTML = `<div class="empty">${esc(e.message)}</div>`; });
   const listTimer = setInterval(() => { if (!document.hidden) loadList().catch(() => {}); }, 20000);
   onLeave(() => clearInterval(listTimer));
 
@@ -911,51 +959,77 @@ async function messages(withId) {
   const bubble = (m) => {
     const day = new Date(m.at).toDateString();
     const sep = day !== lastDay ? `<div class="day">${new Date(m.at).toLocaleDateString(locale(), { weekday: "short", day: "numeric", month: "short" })}</div>` : "";
-    lastDay = day; lastId = Math.max(lastId, m.id);
+    lastDay = day; if (m.id > 0) lastId = Math.max(lastId, m.id);
     const orig = m.original ? `<span class="orig" translate="no" dir="auto" lang="${esc(m.lang)}" hidden>${esc(m.original)}</span><button class="linkish quiet orig-btn" data-act="msgOrig" type="button">${esc(t("Translated from {lang}", { lang: langName(m.lang) || t("another language") }))}</button>` : "";
-    return `${sep}<div class="bubble ${m.mine ? "mine" : ""}"><span translate="no" dir="auto">${esc(m.body)}</span>${orig}<time>${clock(m.at)}</time></div>`;
+    return `${sep}<div class="bubble ${m.mine ? "mine" : ""}${m.pending ? " pending" : ""}" ${m.pending ? `data-pending="${m.pending}"` : ""}><span translate="no" dir="auto">${esc(m.body)}</span>${orig}<time>${m.pending ? "" : clock(m.at)}</time></div>`;
   };
-  let data;
-  try { data = await api("GET", `/api/messages/${withId}`); }
-  catch (e) {
-    if (token === routeToken) $("#thread").innerHTML = `<div class="empty" style="margin:auto"><span>${esc(e.message)}</span><a class="btn btn-soft btn-sm" href="#/u/${esc(withId)}">View profile</a></div>`;
-    return;
-  }
-  if (token !== routeToken) return;
-  const w = data.with;
+  const head = (w) => `<a href="#/messages" class="btn btn-quiet btn-sm" aria-label="Back to conversations" style="padding:.4rem">${icon("back")}</a>${avatar(w, "sm")}<div style="display:grid"><a href="#/u/${esc(w.id)}">${esc(w.full_name)}</a><span class="tiny">${esc(where(w))}</span></div>`;
+  const path = `/api/messages/${withId}`;
+  const paint = (d) => {
+    lastId = 0; lastDay = "";
+    $("#threadHead").innerHTML = head(d.with);
+    const pending = $$(".bubble.pending", box).map((b) => b.outerHTML).join("");   // messages still on their way
+    box.innerHTML = (d.messages.length ? d.messages.map(bubble).join("") : `<div class="day" id="hello">${esc(t("Say shalom to {name}.", { name: first(d.with.full_name) }))}</div>`) + pending;
+  };
+
+  // The conversation opens at once (from last time, if seen before), and the box is ready to type in.
   $("#thread").innerHTML = `
-    <div class="thread-head"><a href="#/messages" class="btn btn-quiet btn-sm" aria-label="Back to conversations" style="padding:.4rem">${icon("back")}</a>${avatar(w, "sm")}<div style="display:grid"><a href="#/u/${esc(w.id)}">${esc(w.full_name)}</a><span class="tiny">${esc(where(w))}</span></div></div>
-    <div class="bubbles" id="bubbles">${data.messages.length ? data.messages.map(bubble).join("") : `<div class="day" id="hello">${esc(t("Say shalom to {name}.", { name: first(w.full_name) }))}</div>`}</div>
+    <div class="thread-head" id="threadHead"></div>
+    <div class="bubbles" id="bubbles">${loadingHTML}</div>
     <form class="composer" id="composer"><textarea class="textarea" id="msgIn" rows="1" maxlength="2000" placeholder="Write a message…" aria-label="Message"></textarea><button class="btn btn-primary" type="submit" aria-label="Send">${icon("send")}</button></form>`;
   const box = $("#bubbles"), input = $("#msgIn");
+  const toBottom = () => (box.scrollTop = box.scrollHeight);
+  const seen = recall(path);
+  if (seen) { paint(seen); toBottom(); }
   box.addEventListener("click", (e) => {
     const b = e.target.closest("[data-act=msgOrig]"); if (!b) return;
     const o = b.previousElementSibling, main = o.previousElementSibling;
     o.hidden = !o.hidden; main.hidden = !o.hidden;
   });
-  const toBottom = () => (box.scrollTop = box.scrollHeight);
-  toBottom();
-  refreshMe().catch(() => {});
   try { const draft = sessionStorage.getItem(`draft:${withId}`); if (draft) { input.value = draft; sessionStorage.removeItem(`draft:${withId}`); } } catch { /* storage unavailable */ }
   input.focus();
   input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("#composer").requestSubmit(); } });
   input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = `${Math.min(160, input.scrollHeight)}px`; });
+
+  // Sending shows the message right away; it settles (with its time) when the site confirms it.
+  let tmp = 0;
   $("#composer").onsubmit = async (e) => {
     e.preventDefault();
     const body = input.value.trim(); if (!body) return;
-    input.value = ""; input.style.height = "auto";
+    input.value = ""; input.style.height = "auto"; input.focus();
+    const id = `p${++tmp}`;
+    $("#hello")?.remove();
+    box.insertAdjacentHTML("beforeend", bubble({ id: 0, pending: id, mine: true, body, at: Date.now() })); toBottom();
+    haptic();
     try {
-      const { message } = await api("POST", `/api/messages/${withId}`, { body });
-      $("#hello")?.remove();
-      box.insertAdjacentHTML("beforeend", bubble(message)); toBottom(); loadList().catch(() => {});
-    } catch (err) { input.value = body; toast(err.message); }
+      const { message } = await api("POST", path, { body });
+      const el = $(`[data-pending="${id}"]`, box);
+      if (el) el.outerHTML = bubble(message); else if (message.id > lastId) box.insertAdjacentHTML("beforeend", bubble(message));
+      loadList().catch(() => {});
+    } catch (err) {
+      $(`[data-pending="${id}"]`, box)?.remove();
+      if (!input.value) input.value = body;
+      toast(err.message);
+    }
   };
+
+  try {
+    const d = await api("GET", path);
+    if (token !== routeToken) return;
+    keep(path, { with: d.with, messages: d.messages.slice(-60) });
+    const near = !seen || box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+    paint(d); if (near) toBottom();
+  } catch (e) {
+    if (token === routeToken && !seen) $("#thread").innerHTML = `<div class="empty" style="margin:auto"><span>${esc(e.message)}</span><a class="btn btn-soft btn-sm" href="#/u/${esc(withId)}">View profile</a></div>`;
+    return;
+  }
+  refreshMe().catch(() => {});
   const poll = setInterval(async () => {
     if (document.hidden) return;
     try {
-      const r = await api("GET", `/api/messages/${withId}?after=${lastId}`);
+      const r = await api("GET", `${path}?after=${lastId}`);
       if (token !== routeToken) return;
-      const fresh = r.messages.filter((m) => m.id > lastId);
+      const fresh = r.messages.filter((m) => m.id > lastId && !(m.mine && $(".bubble.pending", box)));
       if (fresh.length) { $("#hello")?.remove(); const near = box.scrollHeight - box.scrollTop - box.clientHeight < 80; box.insertAdjacentHTML("beforeend", fresh.map(bubble).join("")); if (near) toBottom(); }
     } catch { /* keep polling */ }
   }, 5000);
@@ -1011,14 +1085,14 @@ async function board(focus) {
     const fd = new FormData(e.target), btn = e.target.querySelector("[type=submit]");
     const text = String(fd.get("text") || "").trim();
     if (text.length < 3) { toast("Write a few words first."); return; }
-    btn.disabled = true; btn.textContent = t("Translating and posting…");
+    btn.disabled = true;
     try {
       const { post } = await api("POST", "/api/board", { kind: fd.get("kind"), text });
       $("#noPosts")?.remove();
       data.posts.unshift(post); list.insertAdjacentHTML("afterbegin", postHTML({ ...post, replies: 0 }, state.me.id));
-      e.target.reset(); form.classList.remove("open"); toast(post.lang === "und" ? t("Posted. It will be translated in a moment.") : t("Posted. Everyone reads it in their language."));
+      e.target.reset(); form.classList.remove("open"); haptic(); toast(t("Posted. Everyone reads it in their language."));
     } catch (err) { toast(err.message); }
-    btn.disabled = false; btn.textContent = t("Post to the board");
+    btn.disabled = false;
   };
   wireConnect(root, () => {});
 
@@ -1054,7 +1128,7 @@ async function board(focus) {
           $(".reply-list", box).insertAdjacentHTML("beforeend", replyHTML(comment, state.me.id, state.admin));
           ta.value = ""; ta.style.height = "auto";
           const n = $("[data-act=replies]", post); n.dataset.n = Number(n.dataset.n) + 1; n.innerHTML = repliesLabel(n.dataset.n, true);
-          toast(t("Replied. Everyone in the conversation will be notified."));
+          haptic(); toast(t("Replied. Everyone in the conversation will be notified."));
         } catch (err) { toast(err.message); }
         btn.disabled = false;
       };
@@ -1323,6 +1397,10 @@ async function pushNudge(box) {
 // =============================================================
 // The Android app adds a small bridge (window.Android); in a browser these fall back gracefully.
 const APP = typeof window.Android === "object" && typeof window.Android.share === "function";
+/** Tells the Android app the first screen is drawn, so its opening screen can give way. */
+function appReady() { try { if (APP && window.Android.ready) setTimeout(() => window.Android.ready(), 0); } catch { /* ignore */ } }
+/** A light tap felt in the hand when something is sent or accepted (Android app only). */
+const haptic = () => { try { if (APP && window.Android.haptic) window.Android.haptic(); } catch { /* ignore */ } };
 const nfcState = () => { try { return APP && window.Android.nfcState ? window.Android.nfcState() : "none"; } catch { return "none"; } };
 const meetLink = (id) => `${location.origin}/#/meet/${id}`;
 
@@ -1805,8 +1883,26 @@ function summit() {
 // boot
 // =============================================================
 (async () => {
-  view.innerHTML = loadingHTML;
+  const me = api("GET", "/api/me");        // ask the site right away, while the language loads
+  me.catch(() => {});
   await i18nReady;
-  try { await refreshMe(); } catch { state.me = null; }
-  route();
+  const boot = store.get("boot");
+  if (boot?.me) {
+    // Seen before on this phone: open at once on the remembered account and pages, then catch up.
+    applyMe(boot); renderChrome(); route(); appReady();
+    refreshMe(me).then(() => { if (!state.me) go("#/signin"); }).catch(() => {});
+  } else {
+    view.innerHTML = loadingHTML;
+    try { await refreshMe(me); } catch { state.me = null; }
+    route(); appReady();
+  }
 })();
+
+// A new version of the site arrived in the background: switch to it the next time the app is
+// opened (brought back to the screen), unless something is being typed.
+let updateReady = false;
+navigator.serviceWorker?.addEventListener("message", (e) => { if (e.data?.type === "updated") updateReady = true; });
+document.addEventListener("visibilitychange", () => {
+  const typing = [...document.querySelectorAll("textarea, input")].some((el) => el.value && el.type !== "hidden" && el.type !== "checkbox" && el.type !== "radio" && !el.readOnly && el.closest("#composer, #compose, .reply-form, dialog"));
+  if (!document.hidden && updateReady && !typing) location.reload();
+});
